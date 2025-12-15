@@ -43,7 +43,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
             <div className="relative">
               <div className="relative z-10">
                 <img
-                  src="https://images.pexels.com/photos/2132180/pexels-photo-2132180.jpeg"
+                  src="https://parachutekalpavriksha.org/cdn/shop/articles/Sure_ways_to_keep_the_coconut_tree_healthy.jpg?v=1711267599&width=2048"
                   alt="Coconut plantation"
                   className="rounded-2xl shadow-2xl"
                 />
