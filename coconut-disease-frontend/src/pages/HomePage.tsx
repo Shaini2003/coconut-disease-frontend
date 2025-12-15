@@ -119,8 +119,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
                   Targeted for Sri Lankan Conditions
                 </h2>
                 <p className="text-green-50 text-lg mb-6">
-                  Our system is specifically trained on coconut diseases prevalent in Sri Lankan districts
-                  including Kurunegala, Puttalam, Matale, and Gampaha.
+                  Our system is specifically trained on coconut diseases prevalent in Sri Lankan Southern and Western Provinces.
                 </p>
                 <div className="flex items-start space-x-3 mb-4">
                   <MapPin className="h-6 w-6 text-green-200 flex-shrink-0" />
