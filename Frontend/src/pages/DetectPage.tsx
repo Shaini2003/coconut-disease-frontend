@@ -1,32 +1,41 @@
 import { AlertCircle, Camera, Upload, X } from 'lucide-react';
 import { useState } from 'react';
 
+const API_URL = 'http://localhost:5000/api';
+
 interface DetectPageProps {
   onAnalysisComplete: (result: AnalysisResult) => void;
 }
 
 export interface AnalysisResult {
+  id?: number;
   imageUrl: string;
   predictedDisease: string;
   confidence: number;
-  gradcamUrl: string;
+  gradcamUrl: string | null;
+  recommendation: string;
+  fertilizer: string;
+  severity: string;
+  allProbabilities: Record<string, number>;
   timestamp: Date;
 }
 
 export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState('');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setSelectedFile(file);
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setSelectedImage(reader.result as string);
-      };
+      reader.onloadend = () => setSelectedImage(reader.result as string);
       reader.readAsDataURL(file);
+      setError('');
     }
   };
 
@@ -34,49 +43,64 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (file && file.type.startsWith('image/')) {
+      setSelectedFile(file);
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setSelectedImage(reader.result as string);
-      };
+      reader.onloadend = () => setSelectedImage(reader.result as string);
       reader.readAsDataURL(file);
+      setError('');
     }
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-  };
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
 
-  const simulateAnalysis = () => {
+  const handleAnalyze = async () => {
+    if (!selectedFile) return;
     setIsAnalyzing(true);
+    setError('');
 
-    setTimeout(() => {
-      const diseases = [
-        { name: 'Lethal Yellowing', confidence: 0.94 },
-        { name: 'Leaf Spot', confidence: 0.89 },
-        { name: 'Bud Rot', confidence: 0.92 },
-        { name: 'Stem Bleeding', confidence: 0.87 },
-        { name: 'Healthy', confidence: 0.96 },
-      ];
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('image', selectedFile);
 
-      const randomDisease = diseases[Math.floor(Math.random() * diseases.length)];
+      const res = await fetch(`${API_URL}/detect`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Detection failed');
 
       const result: AnalysisResult = {
+        id: data.id,
         imageUrl: selectedImage!,
-        predictedDisease: randomDisease.name,
-        confidence: randomDisease.confidence,
-        gradcamUrl: selectedImage!,
+        predictedDisease: data.disease,
+        confidence: data.confidence / 100,
+        gradcamUrl: data.gradcam_url
+          ? `http://localhost:8000${data.gradcam_url}`
+          : null,
+        recommendation: data.recommendation,
+        fertilizer: data.fertilizer,
+        severity: data.severity,
+        allProbabilities: data.all_probabilities || {},
         timestamp: new Date(),
       };
 
-      setIsAnalyzing(false);
       onAnalysisComplete(result);
-    }, 3000);
+    } catch (err: any) {
+      setError(err.message || 'Detection failed. Make sure ML server is running on port 8000.');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const clearImage = () => {
     setSelectedImage(null);
+    setSelectedFile(null);
     setLocation('');
     setNotes('');
+    setError('');
   };
 
   return (
@@ -87,16 +111,23 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
             Coconut Disease Detection
           </h1>
           <p className="text-lg text-gray-600">
-            Upload an image of a coconut leaf or tree for instant AI-powered disease analysis
+            Upload an image of a coconut leaf for instant AI-powered disease analysis
           </p>
         </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 flex items-start">
+            <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8 mb-6">
           {!selectedImage ? (
             <div
               onDrop={handleDrop}
               onDragOver={handleDragOver}
-              className="border-3 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-green-500 transition-colors cursor-pointer"
+              className="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-green-500 transition-colors cursor-pointer"
             >
               <div className="flex justify-center mb-4">
                 <div className="bg-green-100 p-4 rounded-full">
@@ -152,7 +183,6 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Additional Notes (Optional)
@@ -160,7 +190,7 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
                   <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Any additional observations or symptoms you've noticed..."
+                    placeholder="Any additional observations..."
                     rows={3}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   />
@@ -168,17 +198,17 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
               </div>
 
               <button
-                onClick={simulateAnalysis}
+                onClick={handleAnalyze}
                 disabled={isAnalyzing}
                 className="w-full py-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
               >
                 {isAnalyzing ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                    Analyzing Image...
+                    Analyzing with AI Model...
                   </>
                 ) : (
-                  'Analyze for Disease'
+                  '🔍 Analyze for Disease'
                 )}
               </button>
             </div>
