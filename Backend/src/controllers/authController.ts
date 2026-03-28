@@ -1,9 +1,11 @@
+// Backend/src/controllers/authController.ts
+
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db';
 
-// SIGNUP
+// ── POST /api/auth/signup ─────────────────────────────────────────────────────
 export const signup = async (req: Request, res: Response) => {
   try {
     const { name, email, password, role } = req.body;
@@ -12,7 +14,6 @@ export const signup = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'All fields are required.' });
     }
 
-    // Check if email already exists
     const [existing]: any = await pool.query(
       'SELECT id FROM users WHERE email = ?', [email]
     );
@@ -28,22 +29,23 @@ export const signup = async (req: Request, res: Response) => {
 
     const token = jwt.sign(
       { userId: result.insertId, email, role: role || 'farmer' },
-      process.env.JWT_SECRET!,
+      process.env.JWT_SECRET || 'coconut_secret',
       { expiresIn: '7d' }
     );
 
-    res.status(201).json({
+    return res.status(201).json({
       message: 'Account created successfully!',
       token,
-      user: { id: result.insertId, name, email, role: role || 'farmer' }
+      user: { id: result.insertId, name, email, role: role || 'farmer' },
     });
+
   } catch (error) {
     console.error('Signup error:', error);
-    res.status(500).json({ message: 'Server error during signup.' });
+    return res.status(500).json({ message: 'Server error during signup.' });
   }
 };
 
-// LOGIN
+// ── POST /api/auth/login ──────────────────────────────────────────────────────
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -59,7 +61,7 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    const user = users[0];
+    const user    = users[0];
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid email or password.' });
@@ -67,22 +69,23 @@ export const login = async (req: Request, res: Response) => {
 
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET!,
+      process.env.JWT_SECRET || 'coconut_secret',
       { expiresIn: '7d' }
     );
 
-    res.json({
+    return res.json({
       message: 'Login successful!',
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role }
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
     });
+
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ message: 'Server error during login.' });
+    return res.status(500).json({ message: 'Server error during login.' });
   }
 };
 
-// GET PROFILE
+// ── GET /api/auth/profile ─────────────────────────────────────────────────────
 export const getProfile = async (req: any, res: Response) => {
   try {
     const [users]: any = await pool.query(
@@ -92,8 +95,8 @@ export const getProfile = async (req: any, res: Response) => {
     if (users.length === 0) {
       return res.status(404).json({ message: 'User not found.' });
     }
-    res.json({ user: users[0] });
+    return res.json({ user: users[0] });
   } catch (error) {
-    res.status(500).json({ message: 'Server error.' });
+    return res.status(500).json({ message: 'Server error.' });
   }
 };

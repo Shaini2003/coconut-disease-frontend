@@ -1,3 +1,5 @@
+// Frontend/src/App.tsx
+
 import { useState } from 'react';
 import Footer from './components/Footer';
 import Header from './components/Header';
@@ -9,9 +11,10 @@ import HomePage from './pages/HomePage';
 import ResultsPage from './pages/ResultsPage';
 import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
+import ChatbotPage from './pages/ChatbotPage';
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('login');
+  const [currentPage, setCurrentPage]       = useState('login');
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return !!localStorage.getItem('token');
@@ -45,7 +48,7 @@ function App() {
   };
 
   const renderPage = () => {
-    // Auth pages — no header/footer
+    // Auth pages
     if (currentPage === 'login') {
       return <LoginPage onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
     }
@@ -53,7 +56,7 @@ function App() {
       return <SignUpPage onSignUpSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
     }
 
-    // If not authenticated, redirect to login
+    // Guard — redirect to login if not authenticated
     if (!isAuthenticated) {
       return <LoginPage onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
     }
@@ -61,8 +64,10 @@ function App() {
     switch (currentPage) {
       case 'home':
         return <HomePage onNavigate={handleNavigate} />;
+
       case 'detect':
         return <DetectPage onAnalysisComplete={handleAnalysisComplete} />;
+
       case 'results':
         return analysisResult ? (
           <ResultsPage
@@ -73,18 +78,24 @@ function App() {
         ) : (
           <HomePage onNavigate={handleNavigate} />
         );
+
       case 'history':
         return <HistoryPage onNavigate={handleNavigate} />;
+
       case 'diseases':
         return <DiseasesPage />;
+
+      case 'chatbot':
+        return <ChatbotPage onNavigate={handleNavigate} />;
+
       case 'about':
         return <AboutPage />;
+
       default:
         return <HomePage onNavigate={handleNavigate} />;
     }
   };
 
-  // Hide header/footer on auth pages
   const isAuthPage = currentPage === 'login' || currentPage === 'signup';
 
   return (

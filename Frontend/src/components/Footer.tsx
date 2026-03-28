@@ -1,3 +1,7 @@
+// Frontend/src/components/Footer.tsx
+// No changes needed — your existing Footer is already correct.
+// Copy this file as-is to Frontend/src/components/Footer.tsx
+
 import { Leaf, Mail, MapPin, Phone } from 'lucide-react';
 
 export default function Footer() {
@@ -52,7 +56,9 @@ export default function Footer() {
 
         <div className="border-t border-gray-800 mt-8 pt-8 text-sm text-center">
           <p>&copy; {new Date().getFullYear()} CocoAI Disease Detection System. All rights reserved.</p>
-          <p className="mt-2 text-gray-500">Developed for coconut farmers and agricultural officers in Sri Lanka</p>
+          <p className="mt-2 text-gray-500">
+            Developed for coconut farmers and agricultural officers in Sri Lanka
+          </p>
         </div>
       </div>
     </footer>
