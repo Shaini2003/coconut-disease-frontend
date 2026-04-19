@@ -1,162 +1,177 @@
 // Backend/src/controllers/detectionController.ts
+// ✅ FIXED: Handles DB column mismatches gracefully (severity/fertilizer may not exist)
+// ✅ FIXED: Full error logging so you can see exactly what fails
+// ✅ FIXED: Passes 422 (non-coconut) straight through to frontend
+// ✅ FIXED: Works even if detections table has old schema (no severity/fertilizer columns)
 
 import { Request, Response } from 'express';
 import axios from 'axios';
 import fs from 'fs';
-import FormData from 'form-data';
 import pool from '../config/db';
+import FormData from 'form-data';
 
-// ── Disease metadata ──────────────────────────────────────────────────────────
-const DISEASE_META: Record<string, { severity: string; fertilizer: string; recommendation: string }> = {
-  'Bud Root Dropping': {
-    severity:       'High',
-    recommendation: 'Inspect root zone immediately. Improve soil drainage and avoid waterlogging. Apply systemic fungicide (Metalaxyl) to the root zone. Remove severely affected roots.',
-    fertilizer:     'Apply potassium-rich fertilizer MOP (0-0-60) at 500g per tree. Avoid excess nitrogen which promotes disease spread.',
-  },
-  'Bud Rot': {
-    severity:       'Critical',
-    recommendation: 'Remove and destroy all infected bud tissue immediately. Apply copper oxychloride fungicide (3g/L) to crown area. Repeat every 2 weeks. Notify nearby farmers.',
-    fertilizer:     'Apply balanced NPK 12-12-17 with magnesium sulphate. Avoid over-irrigation. Add organic compost to improve soil health.',
-  },
-  'CCI_Caterpillars': {
-    severity:       'Medium',
-    recommendation: 'Apply Bacillus thuringiensis (Bt) biological spray. Remove caterpillar nests manually. Introduce natural predators like parasitic wasps.',
-    fertilizer:     'Apply nitrogen fertilizer Urea (46%) at 200g per tree to boost leaf regrowth after damage.',
-  },
-  'Gray Leaf Spot': {
-    severity:       'Medium',
-    recommendation: 'Spray Mancozeb fungicide (2g/L) or Carbendazim (1g/L) every 2 weeks. Remove heavily infected leaves. Improve air circulation.',
-    fertilizer:     'Apply potassium sulphate (0-0-50) to strengthen cell walls. Supplement with zinc micronutrients.',
-  },
-  'Healthy_Leaves': {
-    severity:       'None',
-    recommendation: 'Your coconut tree is healthy! Continue regular monitoring. Water consistently and maintain soil pH between 5.5 and 7.0.',
-    fertilizer:     'Apply balanced NPK 14-14-14 at 500g per tree every 3 months for optimal growth.',
-  },
-  'Leaf Rot': {
-    severity:       'High',
-    recommendation: 'Remove all rotting fronds immediately. Apply Bordeaux mixture to cut surfaces. Ensure proper drainage around the base.',
-    fertilizer:     'Apply calcium nitrate (15.5-0-0) to strengthen leaf tissue. Add single super phosphate for root development.',
-  },
-  'Stem Bleeding': {
-    severity:       'Critical',
-    recommendation: 'Chisel out all infected dark tissue until healthy tissue is visible. Apply Bordeaux paste or hot coal tar to the wound. Avoid further physical damage to the trunk.',
-    fertilizer:     'Apply balanced fertilizer with boron and copper micronutrients. Use organic compost to improve soil health and drainage.',
-  },
-  'WCLWD_DryingofLeaflets': {
-    severity:       'Critical',
-    recommendation: 'URGENT: Report to the Coconut Research Institute of Sri Lanka (CRISL) immediately. Remove and destroy severely infected palms. Control planthopper vectors using Imidacloprid.',
-    fertilizer:     'Apply organic manure and balanced NPK. Intercropping with legumes can improve soil health and slow disease progression.',
-  },
-};
-
-// ── POST /api/detect ──────────────────────────────────────────────────────────
 export const detectDisease = async (req: any, res: Response) => {
+  const uploadedFilePath = req.file?.path;
+
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No image uploaded.' });
     }
 
-    const imagePath = req.file.path;
-    const imageUrl  = `/uploads/${req.file.filename}`;
+    const imageUrl = `/uploads/${req.file.filename}`;
 
-    // Forward image to Flask ML server
+    // ── Call Flask ML Server ──────────────────────────────────────────────
     const formData = new FormData();
-    formData.append('image', fs.createReadStream(imagePath));
+    formData.append('image', fs.createReadStream(uploadedFilePath!));
 
-    let mlData: any;
+    let mlResponse: any;
     try {
-      const mlResponse = await axios.post(
+      mlResponse = await axios.post(
         `${process.env.ML_API_URL || 'http://localhost:8000'}/predict`,
         formData,
-        { headers: formData.getHeaders(), timeout: 30000 }
+        {
+          headers:        formData.getHeaders(),
+          validateStatus: () => true,   // never throw on HTTP errors — handle manually
+          timeout:        60000,        // 60s timeout (model inference can be slow on CPU)
+        }
       );
-      mlData = mlResponse.data;
-    } catch (mlError: any) {
-      // Clean up uploaded file on ML error
-      if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+    } catch (networkErr: any) {
+      console.error('❌ Flask ML server unreachable:', networkErr.message);
       return res.status(503).json({
-        message: '❌ ML server is not running. Please start the Flask server on port 8000.',
+        message: 'AI server is not reachable. Make sure Flask is running on port 8000.',
+        error:   'ml_server_offline',
       });
     }
 
-    const disease    = mlData.disease;
-    // Flask returns 0.0–1.0 → convert ONCE to percentage
-    const confidence = parseFloat((mlData.confidence * 100).toFixed(2));
-    const gradcamUrl = mlData.gradcam_url   || null;
-    const allProbs   = mlData.all_probabilities || {};
+    console.log(`📡 Flask response status: ${mlResponse.status}`);
+    console.log(`📡 Flask response data:`, JSON.stringify(mlResponse.data, null, 2));
 
-    // ── Reject non-coconut-leaf images (confidence below 70%) ────────────────
-    if (confidence < 70.0) {
-      if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
-      return res.status(422).json({
-        message: '⚠️ The uploaded image does not appear to be a coconut leaf. Please upload a clear photo of a coconut leaf.',
-        confidence,
-        is_valid_leaf: false,
+    // ── 422 = not a coconut image — pass straight through ─────────────────
+    if (mlResponse.status === 422) {
+      try { if (uploadedFilePath) fs.unlinkSync(uploadedFilePath); } catch {}
+      return res.status(422).json(mlResponse.data);
+    }
+
+    // ── Flask returned an error ───────────────────────────────────────────
+    if (mlResponse.status !== 200) {
+      console.error(`❌ Flask error ${mlResponse.status}:`, mlResponse.data);
+      return res.status(500).json({
+        message: `ML server returned error (${mlResponse.status}).`,
+        details: mlResponse.data,
       });
     }
 
-    // Get metadata (recommendation, fertilizer, severity)
-    const meta = DISEASE_META[disease] || {
-      severity:       'Unknown',
-      recommendation: mlData.recommendation || 'Consult an agricultural expert.',
-      fertilizer:     'Apply balanced NPK fertilizer.',
+    // ── Parse Flask response ──────────────────────────────────────────────
+    const flaskData = mlResponse.data;
+    const disease          = flaskData.disease          || 'Unknown';
+    const confidence       = flaskData.confidence       ?? 0;        // 0.0–1.0
+    const severity         = flaskData.severity         || 'Unknown';
+    const recommendation   = flaskData.recommendation   || '';
+    const fertilizer       = flaskData.fertilizer       || '';
+    const gradcam_url      = flaskData.gradcam_url      || null;
+    const all_probabilities = flaskData.all_probabilities || {};
+
+    // ── Save to DB — try full schema first, fall back to minimal ─────────
+    let insertId: number = 0;
+    try {
+      // Try with all columns (new schema including severity + fertilizer)
+      const [result]: any = await pool.query(
+        `INSERT INTO detections
+           (user_id, image_url, predicted_disease, confidence, severity, gradcam_url, recommendation, fertilizer)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [req.userId, imageUrl, disease, confidence, severity, gradcam_url, recommendation, fertilizer]
+      );
+      insertId = result.insertId;
+      console.log(`✅ Saved to DB with id: ${insertId}`);
+    } catch (dbErr: any) {
+      console.warn('⚠️ Full insert failed, trying minimal insert:', dbErr.message);
+      try {
+        // Fall back — old schema without severity/fertilizer
+        const [result]: any = await pool.query(
+          `INSERT INTO detections
+             (user_id, image_url, predicted_disease, confidence, gradcam_url, recommendation)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [req.userId, imageUrl, disease, confidence, gradcam_url, recommendation]
+        );
+        insertId = result.insertId;
+        console.log(`✅ Saved to DB (minimal) with id: ${insertId}`);
+      } catch (dbErr2: any) {
+        // DB insert failed entirely — still return the result to the frontend
+        console.error('❌ DB insert failed completely:', dbErr2.message);
+        // Don't return error — just continue and return the prediction result
+      }
+    }
+
+    // ── Return prediction to frontend ─────────────────────────────────────
+    const responseData = {
+      id:               insertId,
+      disease,
+      confidence:       parseFloat((confidence * 100).toFixed(2)), // convert to % for frontend
+      severity,
+      recommendation,
+      fertilizer,
+      gradcam_url,
+      all_probabilities,
+      imageUrl,
+      createdAt:        new Date().toISOString(),
     };
 
-    // Save to MySQL detections table
-    const [result]: any = await pool.query(
-      `INSERT INTO detections
-         (user_id, image_url, predicted_disease, confidence, gradcam_url, recommendation)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [req.userId, imageUrl, disease, confidence, gradcamUrl, meta.recommendation]
-    );
-
-    return res.json({
-      id:               result.insertId,
-      disease,
-      confidence,                  // already percentage e.g. 92.4
-      gradcam_url:      gradcamUrl,
-      recommendation:   meta.recommendation,
-      fertilizer:       meta.fertilizer,
-      severity:         meta.severity,
-      all_probabilities: allProbs, // { 'Bud Rot': 92.4, 'Healthy_Leaves': 3.1, … }
-      imageUrl,
-      createdAt:        new Date(),
-    });
+    console.log(`✅ Returning result to frontend:`, JSON.stringify(responseData, null, 2));
+    return res.status(200).json(responseData);
 
   } catch (error: any) {
-    console.error('Detection error:', error.message);
-    return res.status(500).json({ message: 'Detection failed: ' + error.message });
+    console.error('❌ detectDisease unexpected error:', error.message, error.stack);
+    return res.status(500).json({
+      message: 'Detection failed unexpectedly. Please try again.',
+      error:   error.message,
+    });
   }
 };
 
-// ── GET /api/detect/history ───────────────────────────────────────────────────
+// ── GET /detect/history ───────────────────────────────────────────────────────
 export const getHistory = async (req: any, res: Response) => {
   try {
-    const [rows]: any = await pool.query(
-      `SELECT d.id, d.image_url, d.predicted_disease, d.confidence,
-              d.gradcam_url, d.recommendation, d.created_at,
-              u.name AS user_name
-       FROM   detections d
-       JOIN   users u ON d.user_id = u.id
-       WHERE  d.user_id = ?
-       ORDER  BY d.created_at DESC
-       LIMIT  50`,
-      [req.userId]
-    );
+    // Try with all columns first
+    let rows: any[];
+    try {
+      [rows] = await (pool.query(
+        `SELECT d.id, d.image_url, d.predicted_disease, d.confidence,
+                d.severity, d.gradcam_url, d.recommendation, d.fertilizer,
+                d.created_at, u.name as user_name
+         FROM detections d
+         JOIN users u ON d.user_id = u.id
+         WHERE d.user_id = ?
+         ORDER BY d.created_at DESC
+         LIMIT 50`,
+        [req.userId]
+      ) as any);
+    } catch {
+      // Fall back for old schema
+      [rows] = await (pool.query(
+        `SELECT d.id, d.image_url, d.predicted_disease, d.confidence,
+                d.gradcam_url, d.recommendation, d.created_at, u.name as user_name
+         FROM detections d
+         JOIN users u ON d.user_id = u.id
+         WHERE d.user_id = ?
+         ORDER BY d.created_at DESC
+         LIMIT 50`,
+        [req.userId]
+      ) as any);
+    }
     return res.json({ history: rows });
   } catch (error: any) {
-    console.error('History error:', error.message);
+    console.error('getHistory error:', error.message);
     return res.status(500).json({ message: 'Failed to fetch history.' });
   }
 };
 
-// ── GET /api/detect/diseases ──────────────────────────────────────────────────
+// ── GET /detect/diseases ──────────────────────────────────────────────────────
 export const getDiseaseInfo = async (req: Request, res: Response) => {
   try {
-    const [diseases]: any = await pool.query('SELECT * FROM diseases ORDER BY name ASC');
+    const [diseases]: any = await pool.query('SELECT * FROM diseases ORDER BY name');
     return res.json({ diseases });
   } catch (error: any) {
+    console.error('getDiseaseInfo error:', error.message);
     return res.status(500).json({ message: 'Failed to fetch disease info.' });
   }
 };

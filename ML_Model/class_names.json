@@ -2,9 +2,13 @@
   "Bud Root Dropping",
   "Bud Rot",
   "CCI_Caterpillars",
+  "CCI_Leaflets",
   "Gray Leaf Spot",
   "Healthy_Leaves",
   "Leaf Rot",
+  "Other",
   "Stem Bleeding",
-  "WCLWD_DryingofLeaflets"
+  "WCLWD_DryingofLeaflets",
+  "WCLWD_Flaccidity",
+  "WCLWD_Yellowing"
 ]

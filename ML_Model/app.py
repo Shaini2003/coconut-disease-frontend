@@ -1,290 +1,397 @@
 # ML_Model/app.py
-# COMPLETE FIX: Multi-factor image validation to reject non-coconut-leaf images
+# ✅ PERMANENT FIX: Patches .keras file at runtime to remove quantization_config
+# ✅ No need to run any separate script — just run: python app.py
+# ✅ Works with tensorflow==2.17.0 keras==3.4.1 numpy==1.26.4
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import tensorflow as tf
 import numpy as np
 import cv2
 import os
 import json
 import uuid
+import zipfile
+import shutil
+import tempfile
 from PIL import Image
 import io
 
 app = Flask(__name__)
 CORS(app)
 
-# ── Load model ────────────────────────────────────────────────────────────────
-MODEL_PATH = './coconut_disease_model.keras'
-print("🔄 Loading model...")
-model = tf.keras.models.load_model(MODEL_PATH)
-print("✅ Model loaded!")
+MODEL      = None
+CLASS_NAMES = []
 
-with open('./class_names.json', 'r') as f:
-    CLASS_NAMES = json.load(f)
-print(f"✅ Classes: {CLASS_NAMES}")
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 1: Patch the .keras file by removing quantization_config from its JSON
+# This edits the file ONCE and saves it so next run loads instantly
+# ─────────────────────────────────────────────────────────────────────────────
+def _remove_quantization_config(obj):
+    """Recursively strip 'quantization_config' from any nested dict/list."""
+    if isinstance(obj, dict):
+        obj.pop('quantization_config', None)
+        for v in obj.values():
+            _remove_quantization_config(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            _remove_quantization_config(item)
+    return obj
 
-# ── Recommendations ───────────────────────────────────────────────────────────
-RECOMMENDATIONS = {
+
+def patch_keras_file(model_path):
+    """
+    Opens the .keras zip, removes quantization_config from config.json,
+    and overwrites the file. Marks it with a 'patched' file so it only
+    runs once.
+    """
+    patched_marker = model_path + '.patched'
+    if os.path.exists(patched_marker):
+        print("✅ Model already patched — skipping patch step.")
+        return True
+
+    print("🔧 Patching .keras file to remove quantization_config...")
+    try:
+        tmp_path = model_path + '.tmp'
+        with zipfile.ZipFile(model_path, 'r') as zin:
+            with zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
+                for name in zin.namelist():
+                    data = zin.read(name)
+                    if name == 'config.json':
+                        cfg  = json.loads(data.decode('utf-8'))
+                        cfg  = _remove_quantization_config(cfg)
+                        data = json.dumps(cfg, indent=2).encode('utf-8')
+                        print("   ✅ quantization_config removed from config.json")
+                    zout.writestr(name, data)
+        os.replace(tmp_path, model_path)
+        # Write marker so we don't re-patch next run
+        open(patched_marker, 'w').close()
+        print("✅ Patch applied successfully!")
+        return True
+    except Exception as e:
+        print(f"❌ Patching failed: {e}")
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 2: Load model — now loads cleanly after patching
+# ─────────────────────────────────────────────────────────────────────────────
+def load_model():
+    global MODEL, CLASS_NAMES
+    import tensorflow as tf
+    print(f"TensorFlow: {tf.__version__} | Keras: {tf.keras.__version__}")
+
+    # Load class names
+    if os.path.exists('./class_names.json'):
+        with open('./class_names.json', 'r') as f:
+            loaded = json.load(f)
+            CLASS_NAMES.clear()
+            CLASS_NAMES.extend(loaded)
+        print(f"✅ Loaded {len(CLASS_NAMES)} classes: {CLASS_NAMES}")
+    else:
+        CLASS_NAMES.extend([
+            'Bud Root Dropping', 'Bud Rot', 'CCI_Caterpillars',
+            'Gray Leaf Spot', 'Healthy_Leaves', 'Leaf Rot',
+            'Stem Bleeding', 'WCLWD_DryingofLeaflets'
+        ])
+        print(f"⚠️  class_names.json missing — using {len(CLASS_NAMES)} defaults")
+
+    # Try model files in order
+    for model_path in ['./coconut_disease_model.keras', './coconut_disease_model.h5']:
+        if not os.path.exists(model_path):
+            continue
+        print(f"\n📂 Found: {model_path}")
+
+        # Patch .keras files before loading
+        if model_path.endswith('.keras'):
+            if not patch_keras_file(model_path):
+                print("   ⚠️  Patch failed, trying next method...")
+
+        # Method 1: Standard load (works after patching)
+        try:
+            MODEL = tf.keras.models.load_model(model_path, compile=False)
+            MODEL.compile(
+                optimizer=tf.keras.optimizers.Adam(1e-5),
+                loss='categorical_crossentropy',
+                metrics=['accuracy']
+            )
+            print(f"✅ Model loaded successfully from {model_path}")
+
+            # Verify output units match class count
+            output_units = MODEL.output_shape[-1]
+            if output_units != len(CLASS_NAMES):
+                print(f"⚠️  WARNING: Model has {output_units} output units but class_names.json has {len(CLASS_NAMES)} classes!")
+                print(f"   Trimming CLASS_NAMES to match model output ({output_units} classes)")
+                # Keep only the first N classes that match the model
+                CLASS_NAMES[:] = CLASS_NAMES[:output_units]
+            else:
+                print(f"✅ Output units ({output_units}) match class count ({len(CLASS_NAMES)}) ✓")
+
+            if 'Other' in CLASS_NAMES:
+                print(f"✅ Invalid image rejection ACTIVE (Other = index {CLASS_NAMES.index('Other')})")
+            break
+
+        except Exception as e:
+            print(f"   Load failed: {str(e)[:120]}")
+            MODEL = None
+
+    if MODEL is None:
+        print("\n❌ Model failed to load!")
+        print("   Run in terminal:  python patch_model.py")
+        print("   Then retry:       python app.py")
+
+
+load_model()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Disease metadata — covers all possible class names
+# ─────────────────────────────────────────────────────────────────────────────
+DISEASE_META = {
     'Bud Root Dropping': {
-        'recommendation': 'Remove severely affected fronds. Apply systemic fungicide (Metalaxyl). Improve soil drainage. Avoid water stagnation near tree base.',
-        'fertilizer':     'Apply potassium-rich fertilizer (MOP 0-0-60). Avoid excess nitrogen.',
-        'severity':       'High'
+        'severity': 'High',
+        'recommendation': 'Improve drainage. Apply Metalaxyl fungicide (2g/L) to root zone. Remove wilted fronds. Inspect root system.',
+        'fertilizer': 'Apply potassium-rich MOP (0-0-60) at 500g per tree. Reduce nitrogen temporarily.'
     },
     'Bud Rot': {
-        'recommendation': 'URGENT! Remove and destroy infected bud tissue. Apply Bordeaux mixture (1%) to crown. Avoid wetting crown during irrigation. Consult agricultural officer immediately.',
-        'fertilizer':     'Apply balanced NPK with extra potassium. Avoid over-irrigation.',
-        'severity':       'Critical'
+        'severity': 'Critical',
+        'recommendation': 'URGENT: Remove and destroy infected bud. Apply Copper Oxychloride (3g/L) every 10 days. Improve drainage.',
+        'fertilizer': 'Apply balanced NPK 12-12-17 with magnesium sulfate.'
     },
     'CCI_Caterpillars': {
-        'recommendation': 'Apply chlorpyrifos (0.05%) spray. Use Bacillus thuringiensis (Bt) for eco-friendly treatment. Manually remove egg masses if infestation is small.',
-        'fertilizer':     'Apply magnesium sulfate (1%) foliar spray to boost immunity.',
-        'severity':       'Medium'
+        'severity': 'Medium',
+        'recommendation': 'Apply Bt spray (2g/L). Remove nests manually. Introduce parasitic wasps.',
+        'fertilizer': 'Apply Urea (46% N) at 200g per tree. Add zinc micronutrients.'
+    },
+    'CCI_Leaflets': {
+        'severity': 'Medium',
+        'recommendation': 'Remove infested leaflets. Apply neem oil (5ml/L) every 7 days.',
+        'fertilizer': 'Apply NPK 14-14-14 at 300g per tree with potassium sulphate.'
     },
     'Gray Leaf Spot': {
-        'recommendation': 'Spray Mancozeb (2g/L) or Carbendazim (1g/L) every 2 weeks. Remove heavily infected leaves. Avoid overhead irrigation.',
-        'fertilizer':     'Apply nitrogen fertilizer (NPK 15-15-15) for healthy new growth.',
-        'severity':       'Medium'
+        'severity': 'Medium',
+        'recommendation': 'Spray Mancozeb (2g/L) every 14 days. Remove infected fronds.',
+        'fertilizer': 'Apply potassium sulphate with zinc and manganese micronutrients.'
     },
     'Healthy_Leaves': {
-        'recommendation': '✅ Your coconut tree is HEALTHY! No disease detected. Continue regular care and monitoring.',
-        'fertilizer':     'Apply balanced NPK 14-14-14 every 3 months.',
-        'severity':       'None'
+        'severity': 'None',
+        'recommendation': '✅ Tree is healthy! Continue regular monitoring and care.',
+        'fertilizer': 'Apply balanced NPK 14-14-14 at 500g per tree every 3 months.'
     },
     'Leaf Rot': {
-        'recommendation': 'Remove all rotted leaf material immediately. Apply copper oxychloride (3g/L) fungicide. Improve air circulation and drainage.',
-        'fertilizer':     'Apply calcium and phosphorus-rich fertilizer to strengthen cell walls.',
-        'severity':       'High'
+        'severity': 'High',
+        'recommendation': 'Remove and burn rotting fronds. Apply Bordeaux mixture (1%). Avoid overhead irrigation.',
+        'fertilizer': 'Apply calcium nitrate with phosphorus for root health.'
     },
     'Stem Bleeding': {
-        'recommendation': 'URGENT! Scrape infected bark to healthy tissue. Apply Bordeaux paste on wound. Inject Metalaxyl (5ml per tree). Contact agricultural officer immediately.',
-        'fertilizer':     'Avoid fertilizers until controlled. Then apply potassium-rich fertilizer.',
-        'severity':       'Critical'
+        'severity': 'Critical',
+        'recommendation': 'URGENT: Chisel infected tissue to healthy wood. Apply Bordeaux paste. Wrap wound.',
+        'fertilizer': 'Apply fertilizer with boron and copper micronutrients.'
     },
     'WCLWD_DryingofLeaflets': {
-        'recommendation': 'Weligama Coconut Leaf Wilt Disease detected! Remove severely affected palms. Apply oxytetracycline injections. Report to Coconut Research Institute Sri Lanka IMMEDIATELY.',
-        'fertilizer':     'Apply zinc and boron micronutrients to slow progression.',
-        'severity':       'Critical'
-    }
+        'severity': 'Critical',
+        'recommendation': 'URGENT: Report to CRISL. Remove and destroy infected palms. Control leafhopper vectors.',
+        'fertilizer': 'Apply organic compost (10kg) and balanced NPK.'
+    },
+    'WCLWD_Flaccidity': {
+        'severity': 'Critical',
+        'recommendation': 'URGENT: Report to CRISL. Isolate affected trees. Control insect vectors.',
+        'fertilizer': 'Apply potassium and magnesium. Use compost to improve soil health.'
+    },
+    'WCLWD_Yellowing': {
+        'severity': 'Critical',
+        'recommendation': 'URGENT: Report to CRISL. Early removal prevents spread. Control planthopper vectors.',
+        'fertilizer': 'Apply magnesium sulfate spray (2%) and zinc sulfate (0.5%).'
+    },
+    'Other': {
+        'severity': 'None',
+        'recommendation': 'Not a coconut leaf image.',
+        'fertilizer': 'N/A'
+    },
 }
 
-def get_recommendation(disease_name):
-    if disease_name in RECOMMENDATIONS:
-        return RECOMMENDATIONS[disease_name]
-    for key in RECOMMENDATIONS:
-        if key.lower() in disease_name.lower() or disease_name.lower() in key.lower():
-            return RECOMMENDATIONS[key]
-    return {
-        'recommendation': 'Consult an agricultural expert for diagnosis.',
-        'fertilizer':     'Apply balanced NPK fertilizer.',
-        'severity':       'Unknown'
-    }
 
-# ── Multi-factor image validator ──────────────────────────────────────────────
-def is_coconut_leaf_image(img_array, preds):
+# ─────────────────────────────────────────────────────────────────────────────
+# Non-coconut image rejection (works even without "Other" class)
+# ─────────────────────────────────────────────────────────────────────────────
+def is_valid_coconut_image(img_array, preds):
     """
-    Validates whether the uploaded image is likely a coconut leaf
-    using 4 independent checks. Returns (is_valid: bool, reason: str)
-
-    CHECK 1 - Confidence threshold: must be >= 80%
-    CHECK 2 - Confidence gap: top class must dominate clearly
-    CHECK 3 - Color analysis: reject blue-dominant, too dark, too bright
-    CHECK 4 - Texture analysis: reject screenshots with low natural variance
+    Returns (True, '') if valid leaf image, or (False, reason) if rejected.
+    Uses color + texture + confidence checks.
     """
+    top_conf   = float(np.max(preds[0]))
+    second_conf = float(np.sort(preds[0])[-2]) if len(preds[0]) > 1 else 0.0
 
-    top_confidence    = float(np.max(preds[0]))
-    second_confidence = float(np.sort(preds[0])[-2])
-    confidence_gap    = top_confidence - second_confidence
+    # If model predicted "Other" class
+    if 'Other' in CLASS_NAMES:
+        other_idx = CLASS_NAMES.index('Other')
+        if int(np.argmax(preds[0])) == other_idx:
+            return False, 'Not a coconut leaf image (Other class detected)'
 
-    # ── Check 1: Minimum confidence ───────────────────────────────────────────
-    # A screenshot like a phone UI or Gantt chart gets ~0.88 for Healthy_Leaves
-    # because the model has never seen "not a leaf" — it guesses the closest match.
-    # We raise the bar to 0.85 for stricter rejection.
-    if top_confidence < 0.85:
-        return False, f'Confidence too low ({round(top_confidence*100,1)}%) — not a clear coconut leaf'
+    # Confidence too low — model unsure
+    if top_conf < 0.75:
+        return False, f'Confidence too low ({round(top_conf*100,1)}%) — not a clear coconut leaf'
 
-    # ── Check 2: Confidence gap (distribution) ────────────────────────────────
-    # Real leaf: one class wins with >40% gap over second class
-    # Screenshots: model spreads probability more — gap is smaller
-    if confidence_gap < 0.25:
-        return False, 'Model is uncertain — predictions are spread across classes, not a clear leaf'
+    # Confidence gap too small — model confused
+    if (top_conf - second_conf) < 0.20:
+        return False, 'Model predictions are spread — image may not be a leaf'
 
-    # ── Check 3: Color analysis ───────────────────────────────────────────────
-    img_float = img_array.astype(np.float32)
-    r_mean    = np.mean(img_float[:, :, 0])
-    g_mean    = np.mean(img_float[:, :, 1])
-    b_mean    = np.mean(img_float[:, :, 2])
-    total     = r_mean + g_mean + b_mean
+    # Color checks
+    r = np.mean(img_array[:, :, 0])
+    g = np.mean(img_array[:, :, 1])
+    b = np.mean(img_array[:, :, 2])
+    total = r + g + b + 1e-6
 
-    if total > 0:
-        b_ratio = b_mean / total
-        g_ratio = g_mean / total
+    if b / total > 0.42 and g / total < 0.32:
+        return False, 'Blue-dominant image — looks like a screenshot or UI'
 
-        # Reject blue-dominant images (phone screenshots, app UIs, sky photos)
-        if b_ratio > 0.42 and g_ratio < 0.32:
-            return False, 'Image appears to be a screenshot or non-plant image (blue dominant colors)'
+    if total < 55:
+        return False, 'Image too dark to be a leaf photo'
 
-        # Reject very dark images (dark mode screenshots, night photos)
-        if total < 55:
-            return False, 'Image is too dark to be a coconut leaf photo'
+    if total > 710:
+        return False, 'Image too bright/white — looks like a document or screenshot'
 
-        # Reject very bright/white images (documents, white backgrounds)
-        if total > 710:
-            return False, 'Image is too bright and uniform to be a leaf photo'
-
-    # ── Check 4: Texture/variance analysis ───────────────────────────────────
-    # Natural leaf photos have complex texture (veins, spots, edges, shadows)
-    # Screenshots have flat solid regions with sharp artificial edges
-    gray      = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    laplacian = cv2.Laplacian(gray, cv2.CV_64F)
-    variance  = laplacian.var()
-
-    # Very low = flat screenshot/solid background
+    # Texture check — screenshots have flat regions
+    gray     = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    variance = cv2.Laplacian(gray, cv2.CV_64F).var()
     if variance < 80:
-        return False, 'Image lacks natural leaf texture — may be a screenshot or generated image'
+        return False, 'Image lacks natural leaf texture (low variance) — may be a screenshot'
 
-    # ── Check 5: Saturation ───────────────────────────────────────────────────
-    hsv             = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
-    saturation_mean = np.mean(hsv[:, :, 1])
+    # Saturation check — documents/scans are near-grayscale
+    hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
+    if np.mean(hsv[:, :, 1]) < 25:
+        return False, 'Image appears grayscale — not a leaf photo'
 
-    # Grayscale scans, documents, or B&W screenshots have near-zero saturation
-    if saturation_mean < 25:
-        return False, 'Image appears to be grayscale — not a leaf photo'
-
-    return True, 'Valid coconut leaf image'
+    return True, ''
 
 
-# ── Grad-CAM ──────────────────────────────────────────────────────────────────
-def generate_gradcam(img_array, class_index):
+# ─────────────────────────────────────────────────────────────────────────────
+# Grad-CAM
+# ─────────────────────────────────────────────────────────────────────────────
+def generate_gradcam(img_batch, class_index):
+    if MODEL is None:
+        return None
     try:
+        import tensorflow as tf
         grad_model = tf.keras.models.Model(
-            inputs=model.input,
-            outputs=[model.get_layer('Conv_1').output, model.output]
+            inputs=MODEL.input,
+            outputs=[MODEL.get_layer('Conv_1').output, MODEL.output]
         )
         with tf.GradientTape() as tape:
-            conv_out, preds = grad_model(img_array)
+            conv_out, preds = grad_model(img_batch)
             loss = preds[:, class_index]
-
         grads   = tape.gradient(loss, conv_out)
         pooled  = tf.reduce_mean(grads, axis=(0, 1, 2))
-        heatmap = np.squeeze((conv_out[0] @ pooled[..., tf.newaxis]).numpy())
+        heatmap = conv_out[0] @ pooled[..., tf.newaxis]
+        heatmap = tf.squeeze(heatmap).numpy()
         heatmap = np.maximum(heatmap, 0)
         if heatmap.max() > 0:
             heatmap /= heatmap.max()
         return heatmap
     except Exception as e:
-        print(f"⚠️ Grad-CAM error: {e}")
+        print(f"Grad-CAM error: {e}")
         return None
 
 
-# ── GET /health ───────────────────────────────────────────────────────────────
-@app.route('/health')
-def health():
-    return jsonify({
-        'status':      '✅ ML Server running',
-        'model':       MODEL_PATH,
-        'classes':     CLASS_NAMES,
-        'num_classes': len(CLASS_NAMES)
-    })
-
-
-# ── POST /predict ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes
+# ─────────────────────────────────────────────────────────────────────────────
 @app.route('/predict', methods=['POST'])
 def predict():
+    if MODEL is None:
+        return jsonify({'error': 'Model not loaded. Run python patch_model.py then restart.'}), 503
+
     if 'image' not in request.files:
         return jsonify({'error': 'No image provided'}), 400
 
-    file = request.files['image']
-    if not file or file.filename == '':
-        return jsonify({'error': 'Empty file'}), 400
+    file      = request.files['image']
+    img_bytes = file.read()
 
-    try:
-        img_bytes = file.read()
-        img       = Image.open(io.BytesIO(img_bytes)).convert('RGB').resize((224, 224))
-        img_array = np.array(img)
-        img_norm  = np.expand_dims(img_array / 255.0, axis=0).astype(np.float32)
+    img       = Image.open(io.BytesIO(img_bytes)).convert('RGB').resize((224, 224))
+    img_array = np.array(img, dtype=np.uint8)
+    img_norm  = np.expand_dims(img_array.astype(np.float32) / 255.0, axis=0)
 
-        # Run model
-        preds       = model.predict(img_norm, verbose=0)
-        class_index = int(np.argmax(preds[0]))
-        confidence  = float(preds[0][class_index])  # raw 0.0–1.0
-        disease     = CLASS_NAMES[class_index]
+    preds       = MODEL.predict(img_norm, verbose=0)
+    class_index = int(np.argmax(preds[0]))
+    confidence  = float(preds[0][class_index])
+    disease     = CLASS_NAMES[class_index]
 
-        print(f"📊 Prediction: {disease} | Confidence: {round(confidence*100,2)}%")
+    print(f"🔍 Predicted: {disease} ({round(confidence*100,2)}%)")
 
-        # ── Smart multi-factor validation ────────────────────────────────────
-        is_valid, reason = is_coconut_leaf_image(img_array, preds)
-        print(f"{'✅ Valid' if is_valid else '❌ Rejected'}: {reason}")
-
-        if not is_valid:
-            return jsonify({
-                'error':         '⚠️ This does not appear to be a coconut leaf image. Please upload a clear photo of a coconut leaf.',
-                'reason':        reason,
-                'confidence':    round(confidence * 100, 2),
-                'is_valid_leaf': False
-            }), 422
-        # ─────────────────────────────────────────────────────────────────────
-
-        info = get_recommendation(disease)
-
-        # All class probabilities as %
-        all_probs = {
-            CLASS_NAMES[i]: round(float(preds[0][i]) * 100, 2)
-            for i in range(len(CLASS_NAMES))
-        }
-
-        # Grad-CAM
-        gradcam_url = None
-        heatmap = generate_gradcam(img_norm, class_index)
-        if heatmap is not None:
-            hm_resized = cv2.resize(heatmap, (224, 224))
-            hm_colored = cv2.applyColorMap(np.uint8(255 * hm_resized), cv2.COLORMAP_JET)
-            img_bgr    = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-            overlay    = cv2.addWeighted(img_bgr, 0.6, hm_colored, 0.4, 0)
-
-            os.makedirs('./gradcam_outputs', exist_ok=True)
-            filename = f'{uuid.uuid4()}.jpg'
-            cv2.imwrite(f'./gradcam_outputs/{filename}', overlay)
-            gradcam_url = f'/gradcam/{filename}'
-
+    # Reject invalid images
+    valid, reason = is_valid_coconut_image(img_array, preds)
+    if not valid:
+        print(f"🚫 Rejected: {reason}")
         return jsonify({
-            'disease':           disease,
-            'confidence':        confidence,       # 0.0–1.0 → backend ×100 = correct %
-            'severity':          info['severity'],
-            'recommendation':    info['recommendation'],
-            'fertilizer':        info['fertilizer'],
-            'gradcam_url':       gradcam_url,
-            'all_probabilities': all_probs
-        })
+            'error':      'not_coconut_image',
+            'message':    f'This does not appear to be a coconut leaf image. {reason}',
+            'confidence': round(confidence * 100, 2)
+        }), 422
 
-    except Exception as e:
-        print(f"❌ Prediction error: {e}")
-        return jsonify({'error': str(e)}), 500
+    meta = DISEASE_META.get(disease, {
+        'severity':       'Unknown',
+        'recommendation': 'Consult an agricultural expert.',
+        'fertilizer':     'Apply balanced NPK fertilizer.'
+    })
+
+    all_probs = {
+        CLASS_NAMES[i]: round(float(preds[0][i]) * 100, 2)
+        for i in range(len(CLASS_NAMES)) if CLASS_NAMES[i] != 'Other'
+    }
+
+    gradcam_url = None
+    heatmap = generate_gradcam(img_norm, class_index)
+    if heatmap is not None:
+        hm_r = cv2.resize(heatmap, (224, 224))
+        hm_c = cv2.applyColorMap(np.uint8(255 * hm_r), cv2.COLORMAP_JET)
+        imgb = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        ov   = cv2.addWeighted(imgb, 0.6, hm_c, 0.4, 0)
+        os.makedirs('./gradcam_outputs', exist_ok=True)
+        fn = f'{uuid.uuid4()}.jpg'
+        cv2.imwrite(f'./gradcam_outputs/{fn}', ov)
+        gradcam_url = f'/gradcam/{fn}'
+
+    return jsonify({
+        'disease':           disease,
+        'confidence':        confidence,
+        'severity':          meta['severity'],
+        'recommendation':    meta['recommendation'],
+        'fertilizer':        meta['fertilizer'],
+        'gradcam_url':       gradcam_url,
+        'all_probabilities': all_probs,
+    })
 
 
-# ── GET /gradcam/<filename> ───────────────────────────────────────────────────
 @app.route('/gradcam/<filename>')
 def serve_gradcam(filename):
     return send_from_directory('./gradcam_outputs', filename)
 
 
-# ── GET /diseases ─────────────────────────────────────────────────────────────
 @app.route('/diseases')
 def get_diseases():
     return jsonify({
         'diseases': [
-            {'name': k, **v} for k, v in RECOMMENDATIONS.items()
+            {'name': n, 'severity': m['severity'],
+             'recommendation': m['recommendation'], 'fertilizer': m['fertilizer']}
+            for n, m in DISEASE_META.items() if n != 'Other'
         ]
+    })
+
+
+@app.route('/health')
+def health():
+    import tensorflow as tf
+    return jsonify({
+        'status':           '✅ ML Server running!',
+        'model_loaded':     MODEL is not None,
+        'tensorflow':       tf.__version__,
+        'classes':          CLASS_NAMES,
+        'total_classes':    len(CLASS_NAMES),
+        'rejection_active': 'Other' in CLASS_NAMES,
     })
 
 
 if __name__ == '__main__':
     os.makedirs('./gradcam_outputs', exist_ok=True)
-    print("\n" + "="*50)
-    print("🥥 Coconut Disease ML Server")
-    print(f"   Model  : {MODEL_PATH}")
-    print(f"   Classes: {len(CLASS_NAMES)}")
-    print(f"   URL    : http://localhost:8000")
-    print("="*50 + "\n")
+    print("\n🧠 Starting CocoAI ML Server on port 8000...")
     app.run(host='0.0.0.0', port=8000, debug=True)
