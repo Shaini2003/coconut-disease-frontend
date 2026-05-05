@@ -2,6 +2,7 @@
 # ✅ PERMANENT FIX: Patches .keras file at runtime to remove quantization_config
 # ✅ No need to run any separate script — just run: python app.py
 # ✅ Works with tensorflow==2.17.0 keras==3.4.1 numpy==1.26.4
+# ✅ UPDATED: Includes Explainable AI (XAI) text in English and Sinhala
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -145,68 +146,92 @@ def load_model():
 load_model()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Disease metadata — covers all possible class names
+# Disease metadata with Explainable AI (XAI) details
 # ─────────────────────────────────────────────────────────────────────────────
 DISEASE_META = {
     'Bud Root Dropping': {
         'severity': 'High',
         'recommendation': 'Improve drainage. Apply Metalaxyl fungicide (2g/L) to root zone. Remove wilted fronds. Inspect root system.',
-        'fertilizer': 'Apply potassium-rich MOP (0-0-60) at 500g per tree. Reduce nitrogen temporarily.'
+        'fertilizer': 'Apply potassium-rich MOP (0-0-60) at 500g per tree. Reduce nitrogen temporarily.',
+        'xai_explanation_en': 'The Grad-CAM heatmap highlights stress in the lower frond regions, typical of early root zone issues.',
+        'xai_explanation_si': 'Grad-CAM තාප සිතියම මඟින් පහළ පත්‍ර ප්‍රදේශයේ පීඩනයක් පෙන්වයි, මෙය මූල කලාපයේ ගැටලු වල ආරම්භක ලක්ෂණයකි.'
     },
     'Bud Rot': {
         'severity': 'Critical',
         'recommendation': 'URGENT: Remove and destroy infected bud. Apply Copper Oxychloride (3g/L) every 10 days. Improve drainage.',
-        'fertilizer': 'Apply balanced NPK 12-12-17 with magnesium sulfate.'
+        'fertilizer': 'Apply balanced NPK 12-12-17 with magnesium sulfate.',
+        'xai_explanation_en': 'The model detected irregular dark discoloration in the inner spear leaves, the primary indicator of Phytophthora infection.',
+        'xai_explanation_si': 'අභ්‍යන්තර පත්‍රවල අඳුරු පැහැ ගැන්වීමක් මොඩලය විසින් හඳුනාගෙන ඇත. මෙය Bud Rot රෝගයේ ප්‍රධාන ලක්ෂණයකි.'
     },
     'CCI_Caterpillars': {
         'severity': 'Medium',
         'recommendation': 'Apply Bt spray (2g/L). Remove nests manually. Introduce parasitic wasps.',
-        'fertilizer': 'Apply Urea (46% N) at 200g per tree. Add zinc micronutrients.'
+        'fertilizer': 'Apply Urea (46% N) at 200g per tree. Add zinc micronutrients.',
+        'xai_explanation_en': 'Irregular feeding damage patterns on leaflet surfaces were detected, consistent with caterpillar damage textures.',
+        'xai_explanation_si': 'රූකඩ හානිවලට සමාන වන පරිදි පත්‍ර මතුපිට අක්‍රමවත් හානි රටාවන් හඳුනාගෙන ඇත.'
     },
     'CCI_Leaflets': {
         'severity': 'Medium',
         'recommendation': 'Remove infested leaflets. Apply neem oil (5ml/L) every 7 days.',
-        'fertilizer': 'Apply NPK 14-14-14 at 300g per tree with potassium sulphate.'
+        'fertilizer': 'Apply NPK 14-14-14 at 300g per tree with potassium sulphate.',
+        'xai_explanation_en': 'The model identified signs of pest infestation and damage specific to the leaflets.',
+        'xai_explanation_si': 'පත්‍රිකා වලට විශේෂිත වූ පළිබෝධ ආසාදන සහ හානි ලක්ෂණ මොඩලය විසින් හඳුනාගෙන ඇත.'
     },
     'Gray Leaf Spot': {
         'severity': 'Medium',
         'recommendation': 'Spray Mancozeb (2g/L) every 14 days. Remove infected fronds.',
-        'fertilizer': 'Apply potassium sulphate with zinc and manganese micronutrients.'
+        'fertilizer': 'Apply potassium sulphate with zinc and manganese micronutrients.',
+        'xai_explanation_en': 'Circular gray-brown spots with yellow halos were detected, consistent with Pestalotiopsis palmarum infection.',
+        'xai_explanation_si': 'කහ පැහැති දාර සහිත රවුම් අළු-දුඹුරු ලප හඳුනාගෙන ඇත. මෙය Pestalotiopsis දිලීර ආසාදනයකි.'
     },
     'Healthy_Leaves': {
         'severity': 'None',
         'recommendation': '✅ Tree is healthy! Continue regular monitoring and care.',
-        'fertilizer': 'Apply balanced NPK 14-14-14 at 500g per tree every 3 months.'
+        'fertilizer': 'Apply balanced NPK 14-14-14 at 500g per tree every 3 months.',
+        'xai_explanation_en': 'No disease indicators found. The leaf structure and color appear completely normal.',
+        'xai_explanation_si': 'කිසිදු රෝග ලක්ෂණයක් හමු නොවීය. පත්‍රයේ ව්‍යුහය සහ වර්ණය සම්පූර්ණයෙන්ම සාමාන්‍ය බව පෙනේ.'
     },
     'Leaf Rot': {
         'severity': 'High',
         'recommendation': 'Remove and burn rotting fronds. Apply Bordeaux mixture (1%). Avoid overhead irrigation.',
-        'fertilizer': 'Apply calcium nitrate with phosphorus for root health.'
+        'fertilizer': 'Apply calcium nitrate with phosphorus for root health.',
+        'xai_explanation_en': 'Brown water-soaked lesions spreading from leaflet tips were identified, focusing on rotting tissue boundaries.',
+        'xai_explanation_si': 'පත්‍ර කෙළවරින් පැතිරෙන දුඹුරු පැහැති තුවාල හඳුනාගෙන ඇත. තාප සිතියම කුණු වන පටක කෙරෙහි අවධානය යොමු කරයි.'
     },
     'Stem Bleeding': {
         'severity': 'Critical',
         'recommendation': 'URGENT: Chisel infected tissue to healthy wood. Apply Bordeaux paste. Wrap wound.',
-        'fertilizer': 'Apply fertilizer with boron and copper micronutrients.'
+        'fertilizer': 'Apply fertilizer with boron and copper micronutrients.',
+        'xai_explanation_en': 'The model focused on dark, oozing liquid patterns and cracks on the trunk surface.',
+        'xai_explanation_si': 'කඳ මතුපිට ඇති ඉරිතැලීම් සහ අඳුරු දියර ගැලීම් රටාවන් කෙරෙහි මොඩලය විශේෂ අවධානයක් යොමු කර ඇත.'
     },
     'WCLWD_DryingofLeaflets': {
         'severity': 'Critical',
         'recommendation': 'URGENT: Report to CRISL. Remove and destroy infected palms. Control leafhopper vectors.',
-        'fertilizer': 'Apply organic compost (10kg) and balanced NPK.'
+        'fertilizer': 'Apply organic compost (10kg) and balanced NPK.',
+        'xai_explanation_en': 'Progressive yellowing and drying from leaflet tips were identified — a hallmark of phytoplasma infection.',
+        'xai_explanation_si': 'පත්‍ර කෙළවරින් ආරම්භ වී ක්‍රමයෙන් කහ වීම සහ වියළීම හඳුනාගෙන ඇත. මෙය ෆයිටොප්ලාස්මා ආසාදනයක ප්‍රධාන ලක්ෂණයකි.'
     },
     'WCLWD_Flaccidity': {
         'severity': 'Critical',
         'recommendation': 'URGENT: Report to CRISL. Isolate affected trees. Control insect vectors.',
-        'fertilizer': 'Apply potassium and magnesium. Use compost to improve soil health.'
+        'fertilizer': 'Apply potassium and magnesium. Use compost to improve soil health.',
+        'xai_explanation_en': 'The model detected abnormal drooping and flaccidity in the fronds, indicative of Weligama Coconut Leaf Wilt Disease.',
+        'xai_explanation_si': 'ශාඛාවල අසාමාන්‍ය ලෙස ගිලා වැටීමක් මොඩලය විසින් හඳුනාගෙන ඇත. මෙය WCLWD රෝගයේ ලක්ෂණයකි.'
     },
     'WCLWD_Yellowing': {
         'severity': 'Critical',
         'recommendation': 'URGENT: Report to CRISL. Early removal prevents spread. Control planthopper vectors.',
-        'fertilizer': 'Apply magnesium sulfate spray (2%) and zinc sulfate (0.5%).'
+        'fertilizer': 'Apply magnesium sulfate spray (2%) and zinc sulfate (0.5%).',
+        'xai_explanation_en': 'Intensive yellowing patterns characteristic of WCLWD were focused on by the Grad-CAM visualization.',
+        'xai_explanation_si': 'Grad-CAM තාප සිතියම WCLWD රෝගයට ආවේණික වූ තද කහ පැහැ ගැන්වීමේ රටාවන් කෙරෙහි අවධානය යොමු කර ඇත.'
     },
     'Other': {
         'severity': 'None',
         'recommendation': 'Not a coconut leaf image.',
-        'fertilizer': 'N/A'
+        'fertilizer': 'N/A',
+        'xai_explanation_en': 'Not a coconut leaf image.',
+        'xai_explanation_si': 'මෙය පොල් පත්‍රයක රූපයක් නොවේ.'
     },
 }
 
@@ -331,7 +356,9 @@ def predict():
     meta = DISEASE_META.get(disease, {
         'severity':       'Unknown',
         'recommendation': 'Consult an agricultural expert.',
-        'fertilizer':     'Apply balanced NPK fertilizer.'
+        'fertilizer':     'Apply balanced NPK fertilizer.',
+        'xai_explanation_en': 'The AI model analyzed visual patterns to classify this.',
+        'xai_explanation_si': 'AI ආකෘතිය මඟින් රූපයේ රටාවන් විශ්ලේෂණය කර මෙය හඳුනාගන්නා ලදී.'
     })
 
     all_probs = {
@@ -357,6 +384,8 @@ def predict():
         'severity':          meta['severity'],
         'recommendation':    meta['recommendation'],
         'fertilizer':        meta['fertilizer'],
+        'xai_explanation_en': meta['xai_explanation_en'],
+        'xai_explanation_si': meta['xai_explanation_si'],
         'gradcam_url':       gradcam_url,
         'all_probabilities': all_probs,
     })

@@ -1,23 +1,38 @@
 // Frontend/src/pages/ChatbotPage.tsx
+// ✅ FIXED: Sends `language` field to backend so AI replies in Sinhala or English
+// ✅ Language badge shows current reply language
+// ✅ Categories in both EN and Sinhala
+// ✅ Welcome message updates when language switches
+
 import { Bot, ChevronDown, ChevronUp, Loader2, Send, Trash2, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../i18n';
 
 const API_URL = 'http://localhost:5000/api';
+
 interface Message { id: number; role: 'user' | 'bot'; content: string; timestamp: Date; }
 interface ChatbotPageProps { onNavigate: (page: string) => void; }
 
 const CATEGORIES_EN = [
-  { label: '🔴 Critical Diseases', color: 'border-red-200 text-red-700', bg: 'bg-red-50 hover:bg-red-100', questions: ['What is Bud Rot?','How to treat Bud Rot?','What is Stem Bleeding?','How to treat Stem Bleeding?','What is WCLWD?','WCLWD symptoms?'] },
-  { label: '🟠 High Severity',     color: 'border-orange-200 text-orange-700', bg: 'bg-orange-50 hover:bg-orange-100', questions: ['What is Leaf Rot?','How to treat Leaf Rot?','What is Bud Root Dropping?','Bud Root Dropping treatment?'] },
-  { label: '🟡 Medium Severity',   color: 'border-yellow-200 text-yellow-700', bg: 'bg-yellow-50 hover:bg-yellow-100', questions: ['What is Gray Leaf Spot?','How to treat Gray Leaf Spot?','What are CCI Caterpillars?','CCI Caterpillars treatment?'] },
-  { label: '🌾 Farming Tips',      color: 'border-green-200 text-green-700', bg: 'bg-green-50 hover:bg-green-100', questions: ['How often should I water coconut trees?','What fertilizer should I use?','When do coconut trees produce nuts?','How to harvest coconuts?','Best soil for coconut trees?','How to contact CRISL?'] },
+  { label: '🔴 Critical Diseases', color: 'border-red-200 text-red-700', bg: 'bg-red-50 hover:bg-red-100',
+    questions: ['What is Bud Rot?','How to treat Bud Rot?','What is Stem Bleeding?','How to treat Stem Bleeding?','What is WCLWD?','WCLWD symptoms and treatment?'] },
+  { label: '🟠 High Severity', color: 'border-orange-200 text-orange-700', bg: 'bg-orange-50 hover:bg-orange-100',
+    questions: ['What is Leaf Rot?','How to treat Leaf Rot?','What is Bud Root Dropping?','Bud Root Dropping treatment?'] },
+  { label: '🟡 Medium Severity', color: 'border-yellow-200 text-yellow-700', bg: 'bg-yellow-50 hover:bg-yellow-100',
+    questions: ['What is Gray Leaf Spot?','How to treat Gray Leaf Spot?','What are CCI Caterpillars?','CCI Caterpillars treatment?','What are CCI Leaflets?'] },
+  { label: '🌾 Farming Tips', color: 'border-green-200 text-green-700', bg: 'bg-green-50 hover:bg-green-100',
+    questions: ['How often should I water coconut trees?','What fertilizer should I use?','When do coconut trees produce nuts?','How to harvest coconuts?','Best soil for coconut trees?','How to contact CRISL?'] },
 ];
+
 const CATEGORIES_SI = [
-  { label: '🔴 අනතුරුදායක රෝග', color: 'border-red-200 text-red-700', bg: 'bg-red-50 hover:bg-red-100', questions: ['බද් රොට් යනු කුමක්ද?','බද් රොට් ප්‍රතිකාර කරන්නේ කෙසේද?','ස්ටෙම් ලේ වැගිරීම යනු කුමක්ද?','ස්ටෙම් ලේ වැගිරීම ප්‍රතිකාර?','WCLWD යනු කුමක්ද?','WCLWD රෝග ලක්ෂණ?'] },
-  { label: '🟠 ඉහළ බරපතලකම',     color: 'border-orange-200 text-orange-700', bg: 'bg-orange-50 hover:bg-orange-100', questions: ['කොළ කුණු රෝගය යනු කුමක්ද?','කොළ කුණු රෝගය ප්‍රතිකාර?','බද් රූට් ඩ්‍රොපිං යනු කුමක්ද?','බද් රූට් ඩ්‍රොපිං ප්‍රතිකාර?'] },
-  { label: '🟡 මධ්‍යම බරපතලකම', color: 'border-yellow-200 text-yellow-700', bg: 'bg-yellow-50 hover:bg-yellow-100', questions: ['ග්‍රේ ලීෆ් ස්පොට් යනු කුමක්ද?','ග්‍රේ ලීෆ් ස්පොට් ප්‍රතිකාර?','CCI රූකඩ යනු කුමක්ද?','CCI රූකඩ ප්‍රතිකාර?'] },
-  { label: '🌾 ගොවිතැන් ඉඟි',    color: 'border-green-200 text-green-700', bg: 'bg-green-50 hover:bg-green-100', questions: ['පොල් ගස් කොපමණ වාරයකට වතුර දෙන්නද?','කුමන පොහොර යෙදිය යුතුද?','පොල් ගස් ගෙඩි දෙන්නේ කවදාද?','පොල් හෙළ කරන්නේ කෙසේද?','පොල් ගස් සඳහා හොඳම පස කුමක්ද?','CRISL සම්බන්ධ කරන්නේ කෙසේද?'] },
+  { label: '🔴 අනතුරුදායක රෝග', color: 'border-red-200 text-red-700', bg: 'bg-red-50 hover:bg-red-100',
+    questions: ['බද් රොට් යනු කුමක්ද?','බද් රොට් ප්‍රතිකාර කරන්නේ කෙසේද?','ස්ටෙම් ලේ වැගිරීම යනු කුමක්ද?','ස්ටෙම් ලේ වැගිරීම ප්‍රතිකාරය?','WCLWD යනු කුමක්ද?','WCLWD රෝග ලක්ෂණ සහ ප්‍රතිකාර?'] },
+  { label: '🟠 ඉහළ බරපතලකම', color: 'border-orange-200 text-orange-700', bg: 'bg-orange-50 hover:bg-orange-100',
+    questions: ['කොළ කුණු රෝගය යනු කුමක්ද?','කොළ කුණු රෝගය ප්‍රතිකාර?','බද් රූට් ඩ්‍රොපිං යනු කුමක්ද?','බද් රූට් ඩ්‍රොපිං ප්‍රතිකාරය?'] },
+  { label: '🟡 මධ්‍යම බරපතලකම', color: 'border-yellow-200 text-yellow-700', bg: 'bg-yellow-50 hover:bg-yellow-100',
+    questions: ['ග්‍රේ ලීෆ් ස්පොට් යනු කුමක්ද?','ග්‍රේ ලීෆ් ස්පොට් ප්‍රතිකාර?','CCI රූකඩ රෝගය යනු කුමක්ද?','CCI රූකඩ ප්‍රතිකාරය?','CCI ලීෆ්ලෙට්ස් යනු කුමක්ද?'] },
+  { label: '🌾 ගොවිතැන් ඉඟි', color: 'border-green-200 text-green-700', bg: 'bg-green-50 hover:bg-green-100',
+    questions: ['පොල් ගස් කොපමණ වාරයකට වතුර දෙන්නද?','පොල් ගස් සඳහා කුමන පොහොර යෙදිය යුතුද?','පොල් ගස් ගෙඩි දෙන්නේ කවදාද?','පොල් හෙළ කරන්නේ කෙසේද?','පොල් ගස් සඳහා හොඳම පස කුමක්ද?','CRISL සම්බන්ධ කරන්නේ කෙසේද?'] },
 ];
 
 export default function ChatbotPage({ }: ChatbotPageProps) {
@@ -27,8 +42,8 @@ export default function ChatbotPage({ }: ChatbotPageProps) {
   const getWelcome = (): Message => ({
     id: 0, role: 'bot', timestamp: new Date(),
     content: language === 'si'
-      ? `ආයුබෝවන්! 👋 CocoAI සහායකට へようこそ.\n\nමම ඔබේ පොල් ගොවිතැන් විශේෂඥ සහායකයා. මට උදව් කළ හැකි දේ:\n\n🔴 **අනතුරුදායක රෝග** — බද් රොට්, ස්ටෙම් ලේ වැගිරීම, WCLWD\n🟠 **ඉහළ බරපතලකම** — කොළ කුණු රෝගය, බද් රූට් ඩ්‍රොපිං\n🟡 **මධ්‍යම බරපතලකම** — ග්‍රේ ලීෆ් ස්පොට්, CCI රූකඩ\n🟢 **සෞඛ්‍ය සම්පන්න ගස් ලොල** — ජල සැපයීම, පොහොර, ස්කන්ධ\n\nකාණ්ඩයක් තෝරන්න නැතහොත් ඔබේ ප්‍රශ්නය ටයිප් කරන්න!`
-      : `Hello! 👋 Welcome to **CocoAI Assistant**.\n\nI'm your coconut farming expert. I can help with:\n\n🔴 **Critical diseases** — Bud Rot, Stem Bleeding, WCLWD\n🟠 **High severity** — Leaf Rot, Bud Root Dropping\n🟡 **Medium severity** — Gray Leaf Spot, CCI Caterpillars\n🟢 **Healthy tree care** — Watering, fertilizing, harvesting, pests\n\nSelect a category below or type your question!`,
+      ? `ආයුබෝවන්! 👋 **CocoAI සහායකට** へようこそ.\n\nමම ඔබේ පොල් ගොවිතැන් විශේෂඥ සහායකයා. **සිංහල** හෝ **ඉංග්‍රීසි** භාෂාවෙන් ප්‍රශ්න කරන්න — මම **සිංහලෙන් පිළිතුරු දෙන්නම්!**\n\n🔴 **අනතුරුදායක රෝග** — බද් රොට්, ස්ටෙම් ලේ වැගිරීම, WCLWD\n🟠 **ඉහළ බරපතලකම** — කොළ කුණු රෝගය, බද් රූට් ඩ්‍රොපිං\n🟡 **මධ්‍යම බරපතලකම** — ග්‍රේ ලීෆ් ස්පොට්, CCI රූකඩ\n🌾 **ගොවිතැන් ඉඟි** — ජලය, පොහොර, හෙළීම\n\nකාණ්ඩයක් තෝරන්න නැතහොත් ඔබේ ප්‍රශ්නය ටයිප් කරන්න!`
+      : `Hello! 👋 Welcome to **CocoAI Assistant**.\n\nI'm your coconut farming expert. Ask me anything in **English** or **Sinhala** — I'll respond in your chosen language!\n\n🔴 **Critical diseases** — Bud Rot, Stem Bleeding, WCLWD\n🟠 **High severity** — Leaf Rot, Bud Root Dropping\n🟡 **Medium severity** — Gray Leaf Spot, CCI Caterpillars\n🌾 **Farming tips** — Watering, fertilizing, harvesting\n\nSelect a category below or type your question!`,
   });
 
   const [messages,       setMessages]       = useState<Message[]>([getWelcome()]);
@@ -39,6 +54,11 @@ export default function ChatbotPage({ }: ChatbotPageProps) {
   const [openCategory,   setOpenCategory]   = useState<number | null>(null);
   const endRef   = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Update welcome message when language switches
+  useEffect(() => {
+    setMessages(prev => [getWelcome(), ...prev.slice(1)]);
+  }, [language]);
 
   useEffect(() => { fetchHistory(); }, []);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -55,24 +75,42 @@ export default function ChatbotPage({ }: ChatbotPageProps) {
           restored.push({ id: i*2+10, role:'user', content: row.user_message, timestamp: new Date(row.created_at) });
           restored.push({ id: i*2+11, role:'bot',  content: row.bot_response,  timestamp: new Date(row.created_at) });
         });
-        setMessages([getWelcome(), ...restored]); setHasHistory(true);
+        setMessages([getWelcome(), ...restored]);
+        setHasHistory(true);
       }
     } catch (err) { console.warn('History load failed:', err); }
     finally { setHistoryLoading(false); }
   };
 
+  // ✅ KEY FIX: Send language='si' or 'en' so backend replies in correct language
   const sendMessage = async (text?: string) => {
-    const msg = (text || input).trim(); if (!msg || sending) return;
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: msg, timestamp: new Date() }]);
+    const msg = (text || input).trim();
+    if (!msg || sending) return;
+    setMessages(prev => [...prev, { id: Date.now(), role:'user', content: msg, timestamp: new Date() }]);
     setInput(''); setOpenCategory(null); setSending(true);
     try {
       const token = localStorage.getItem('token');
-      const res   = await fetch(`${API_URL}/chatbot`, { method:'POST', headers:{'Content-Type':'application/json', Authorization:`Bearer ${token}`}, body: JSON.stringify({ message: msg }) });
-      const data  = await res.json();
-      setMessages(prev => [...prev, { id: Date.now()+1, role:'bot', content: data.message || 'Sorry, I could not process that.', timestamp: new Date() }]);
+      const res   = await fetch(`${API_URL}/chatbot`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ message: msg, language: language }),  // ← sends 'en' or 'si'
+      });
+      const data = await res.json();
+      setMessages(prev => [...prev, {
+        id: Date.now()+1, role:'bot',
+        content:   data.message || (language === 'si' ? 'සමාවෙන්න, ප්‍රතිචාර දැක්වීමට නොහැකි විය.' : 'Sorry, I could not process that.'),
+        timestamp: new Date(),
+      }]);
     } catch {
-      setMessages(prev => [...prev, { id: Date.now()+1, role:'bot', content: t.chatbot.connectionError, timestamp: new Date() }]);
-    } finally { setSending(false); setTimeout(() => inputRef.current?.focus(), 100); }
+      setMessages(prev => [...prev, {
+        id: Date.now()+1, role:'bot',
+        content:   language === 'si' ? 'සම්බන්ධතා දෝෂය. Backend ක්‍රියාත්මකදැයි බලන්න.' : t.chatbot.connectionError,
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setSending(false);
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
   };
 
   const clearChat = async () => {
@@ -87,6 +125,7 @@ export default function ChatbotPage({ }: ChatbotPageProps) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -94,18 +133,25 @@ export default function ChatbotPage({ }: ChatbotPageProps) {
             <div>
               <h1 className="text-xl font-bold text-gray-900">{t.chatbot.title}</h1>
               <p className="text-sm flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-green-500 rounded-full inline-block animate-pulse"></span>
+                <span className="w-2 h-2 bg-green-500 rounded-full inline-block animate-pulse" />
                 <span className="text-green-600">{historyLoading ? t.chatbot.loadingHistory : hasHistory ? t.chatbot.historyRestored : t.chatbot.online}</span>
               </p>
             </div>
           </div>
-          <button onClick={clearChat} className="flex items-center gap-2 text-sm text-gray-500 hover:text-red-500 px-3 py-2 rounded-lg hover:bg-red-50 transition">
-            <Trash2 className="w-4 h-4" />{t.chatbot.clearChat}
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Language reply badge */}
+            <span className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${language === 'si' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+              {language === 'si' ? '🇱🇰 සිංහලෙන් පිළිතුරු' : '🇬🇧 Replying in English'}
+            </span>
+            <button onClick={clearChat} className="flex items-center gap-2 text-sm text-gray-500 hover:text-red-500 px-3 py-2 rounded-lg hover:bg-red-50 transition">
+              <Trash2 className="w-4 h-4" />{t.chatbot.clearChat}
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="max-w-5xl mx-auto w-full px-4 py-4 flex flex-col flex-1">
+        {/* Categories */}
         <div className="mb-4">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">{t.chatbot.categories}</p>
           <div className="space-y-2">
@@ -127,6 +173,7 @@ export default function ChatbotPage({ }: ChatbotPageProps) {
         {historyLoading && (<div className="flex items-center gap-2 text-sm text-gray-400 mb-3"><Loader2 className="w-4 h-4 animate-spin" />{t.chatbot.loadingMsg}</div>)}
         {!historyLoading && hasHistory && (<div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2"><span className="text-blue-500 text-sm">🕐</span><p className="text-sm text-blue-700">{t.chatbot.historyBanner}</p></div>)}
 
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto space-y-4 pr-1 mb-4" style={{ minHeight: '300px' }}>
           {messages.map((msg, idx) => (
             <div key={msg.id}>
@@ -153,6 +200,7 @@ export default function ChatbotPage({ }: ChatbotPageProps) {
           <div ref={endRef} />
         </div>
 
+        {/* Input */}
         <div className="flex gap-3 items-end">
           <div className="flex-1 bg-white border border-gray-300 rounded-2xl flex items-end px-4 py-3 focus-within:border-green-500 focus-within:ring-2 focus-within:ring-green-100 transition shadow-sm">
             <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}

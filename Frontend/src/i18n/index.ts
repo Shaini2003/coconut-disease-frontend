@@ -1,4 +1,5 @@
 // Frontend/src/i18n/index.ts
+// Complete i18n system — English + Sinhala
 import { createContext, useContext } from 'react';
 import en from './locales/en';
 import si from './locales/si';
@@ -14,7 +15,9 @@ export interface I18nContextType {
 }
 
 export const I18nContext = createContext<I18nContextType>({
-  language: 'en', setLanguage: () => {}, t: en,
+  language: 'en',
+  setLanguage: () => {},
+  t: en,
 });
 
 export const useTranslation = () => useContext(I18nContext);
