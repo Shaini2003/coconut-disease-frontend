@@ -2,7 +2,8 @@
 // ✅ FIXED: Handles DB column mismatches gracefully (severity/fertilizer may not exist)
 // ✅ FIXED: Full error logging so you can see exactly what fails
 // ✅ FIXED: Passes 422 (non-coconut) straight through to frontend
-// ✅ FIXED: Works even if detections table has old schema (no severity/fertilizer columns)
+// ✅ ULTIMATE XAI UPDATE: Passes all 5 XAI features (GradCAM, LIME, BBox, XAI Text, Counterfactuals) to frontend
+// ✅ PROPERLY FORMATTED: No truncated lines, fully readable code
 
 import { Request, Response } from 'express';
 import axios from 'axios';
@@ -48,7 +49,11 @@ export const detectDisease = async (req: any, res: Response) => {
 
     // ── 422 = not a coconut image — pass straight through ─────────────────
     if (mlResponse.status === 422) {
-      try { if (uploadedFilePath) fs.unlinkSync(uploadedFilePath); } catch {}
+      try { 
+        if (uploadedFilePath) fs.unlinkSync(uploadedFilePath); 
+      } catch (e) {
+        // silently ignore unlink errors
+      }
       return res.status(422).json(mlResponse.data);
     }
 
@@ -63,13 +68,22 @@ export const detectDisease = async (req: any, res: Response) => {
 
     // ── Parse Flask response ──────────────────────────────────────────────
     const flaskData = mlResponse.data;
-    const disease          = flaskData.disease          || 'Unknown';
-    const confidence       = flaskData.confidence       ?? 0;        // 0.0–1.0
-    const severity         = flaskData.severity         || 'Unknown';
-    const recommendation   = flaskData.recommendation   || '';
-    const fertilizer       = flaskData.fertilizer       || '';
-    const gradcam_url      = flaskData.gradcam_url      || null;
+    const disease           = flaskData.disease          || 'Unknown';
+    const confidence        = flaskData.confidence       ?? 0;        // 0.0–1.0
+    const severity          = flaskData.severity         || 'Unknown';
+    const recommendation    = flaskData.recommendation   || '';
+    const fertilizer        = flaskData.fertilizer       || '';
     const all_probabilities = flaskData.all_probabilities || {};
+
+    // 🔥 XAI Features Extracted from Python
+    const gradcam_url        = flaskData.gradcam_url        || null;
+    const lime_url           = flaskData.lime_url           || null;
+    const bbox_url           = flaskData.bbox_url           || null;
+    const xai_explanation_en = flaskData.xai_explanation_en || '';
+    const xai_explanation_si = flaskData.xai_explanation_si || '';
+    const counterfactual_en  = flaskData.counterfactual_en  || '';
+    const counterfactual_si  = flaskData.counterfactual_si  || '';
+    const feature_importance = flaskData.feature_importance || null;
 
     // ── Save to DB — try full schema first, fall back to minimal ─────────
     let insertId: number = 0;
@@ -98,25 +112,32 @@ export const detectDisease = async (req: any, res: Response) => {
       } catch (dbErr2: any) {
         // DB insert failed entirely — still return the result to the frontend
         console.error('❌ DB insert failed completely:', dbErr2.message);
-        // Don't return error — just continue and return the prediction result
       }
     }
 
-    // ── Return prediction to frontend ─────────────────────────────────────
+    // ── Return complete prediction + ALL XAI Data to frontend ─────────────
     const responseData = {
-      id:               insertId,
-      disease,
-      confidence:       parseFloat((confidence * 100).toFixed(2)), // convert to % for frontend
-      severity,
-      recommendation,
-      fertilizer,
-      gradcam_url,
-      all_probabilities,
-      imageUrl,
-      createdAt:        new Date().toISOString(),
+      id:                 insertId,
+      disease:            disease,
+      confidence:         parseFloat((confidence * 100).toFixed(2)), // convert to % for frontend
+      severity:           severity,
+      recommendation:     recommendation,
+      fertilizer:         fertilizer,
+      imageUrl:           imageUrl,
+      createdAt:          new Date().toISOString(),
+      all_probabilities:  all_probabilities,
+      // Pass all XAI details to Frontend
+      gradcam_url:        gradcam_url,
+      lime_url:           lime_url,
+      bbox_url:           bbox_url,
+      xai_explanation_en: xai_explanation_en,
+      xai_explanation_si: xai_explanation_si,
+      counterfactual_en:  counterfactual_en,
+      counterfactual_si:  counterfactual_si,
+      feature_importance: feature_importance
     };
 
-    console.log(`✅ Returning result to frontend:`, JSON.stringify(responseData, null, 2));
+    console.log(`✅ Returning result to frontend successfully.`);
     return res.status(200).json(responseData);
 
   } catch (error: any) {
@@ -134,7 +155,7 @@ export const getHistory = async (req: any, res: Response) => {
     // Try with all columns first
     let rows: any[];
     try {
-      [rows] = await (pool.query(
+      const [result]: any = await pool.query(
         `SELECT d.id, d.image_url, d.predicted_disease, d.confidence,
                 d.severity, d.gradcam_url, d.recommendation, d.fertilizer,
                 d.created_at, u.name as user_name
@@ -144,10 +165,12 @@ export const getHistory = async (req: any, res: Response) => {
          ORDER BY d.created_at DESC
          LIMIT 50`,
         [req.userId]
-      ) as any);
-    } catch {
+      );
+      rows = result;
+    } catch (err: any) {
       // Fall back for old schema
-      [rows] = await (pool.query(
+      console.warn('⚠️ Full history query failed, trying minimal query:', err.message);
+      const [result]: any = await pool.query(
         `SELECT d.id, d.image_url, d.predicted_disease, d.confidence,
                 d.gradcam_url, d.recommendation, d.created_at, u.name as user_name
          FROM detections d
@@ -156,7 +179,8 @@ export const getHistory = async (req: any, res: Response) => {
          ORDER BY d.created_at DESC
          LIMIT 50`,
         [req.userId]
-      ) as any);
+      );
+      rows = result;
     }
     return res.json({ history: rows });
   } catch (error: any) {

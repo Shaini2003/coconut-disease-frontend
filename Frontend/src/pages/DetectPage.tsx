@@ -1,6 +1,4 @@
 // Frontend/src/pages/DetectPage.tsx
-// ✅ FULL CODE: Includes 422 Non-Coconut Image Rejection & Sleek UI
-
 import { useState, useRef, useCallback } from 'react';
 import { Upload, X, Leaf, AlertTriangle, CheckCircle, ImageOff, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
@@ -126,7 +124,6 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50 py-10 px-4 animate-in fade-in duration-500">
       <div className="max-w-2xl mx-auto">
 
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-3xl shadow-lg mb-4 transform transition hover:scale-105">
             <Leaf className="h-8 w-8 text-white" />
@@ -135,7 +132,6 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
           <p className="text-gray-500 mt-2 font-medium">{t.detect.subtitle}</p>
         </div>
 
-        {/* Rejection Card (422 Not a coconut) */}
         {uploadState === 'rejected' && (
           <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-8 text-center shadow-lg animate-in zoom-in-95 duration-300">
             <div className="inline-flex items-center justify-center w-20 h-20 bg-amber-100 rounded-full mb-5 shadow-inner">
@@ -164,14 +160,12 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
                 ))}
               </ul>
             </div>
-            <button onClick={handleRemove}
-              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold px-10 py-4 rounded-2xl transition-all shadow-lg active:scale-95 text-base">
+            <button onClick={handleRemove} className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold px-10 py-4 rounded-2xl transition-all shadow-lg active:scale-95 text-base">
               {t.detect.rejection.tryAgain}
             </button>
           </div>
         )}
 
-        {/* Main Upload Card */}
         {uploadState !== 'rejected' && (
           <div className="bg-white rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden transition-all duration-300">
             <div className="p-7">
@@ -214,7 +208,6 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
               )}
             </div>
 
-            {/* Location */}
             <div className="px-7 pb-5">
               <label className="block text-sm font-bold text-gray-800 mb-2">
                 📍 {t.detect.location} <span className="text-gray-400 font-medium">{t.detect.locationOptional}</span>
@@ -224,7 +217,6 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
                 className="w-full border-2 border-gray-200 rounded-2xl px-5 py-3.5 text-sm font-medium bg-gray-50 focus:outline-none focus:border-green-500 focus:bg-white transition shadow-sm" />
             </div>
 
-            {/* Error Message */}
             {uploadState === 'error' && errorMsg && (
               <div className="mx-7 mb-5 bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3 animate-in shake duration-300">
                 <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
@@ -232,7 +224,6 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
               </div>
             )}
 
-            {/* Progress Bar */}
             {uploadState === 'analysing' && (
               <div className="mx-7 mb-5 animate-in fade-in">
                 <div className="flex items-center justify-between text-sm text-gray-700 mb-3 font-bold">
@@ -247,7 +238,6 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
               </div>
             )}
 
-            {/* Analyze Button */}
             <div className="px-7 pb-7">
               <button onClick={handleAnalyse} disabled={!file || uploadState === 'analysing'}
                 className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-extrabold py-4 rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-95 flex items-center justify-center gap-3 text-base">
@@ -260,7 +250,6 @@ export default function DetectPage({ onAnalysisComplete }: DetectPageProps) {
           </div>
         )}
 
-        {/* Tips Section */}
         {(uploadState === 'idle' || uploadState === 'ready') && (
           <div className="mt-6 bg-white/80 backdrop-blur rounded-[2rem] border border-green-100 p-6 shadow-sm">
             <p className="text-sm font-extrabold text-green-800 mb-4 px-2">💡 {t.detect.tips.title}</p>
