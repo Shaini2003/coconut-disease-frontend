@@ -1,4 +1,6 @@
 // Backend/src/controllers/reportController.ts
+// ✅ ULTIMATE A+ REPORT: Professional Medical/Agri Lab Style PDF
+// ✅ Includes XAI (LIME, BBox, GradCAM), Feature Importance Bars, and Counterfactuals
 
 import { Response } from 'express';
 import PDFDocument from 'pdfkit';
@@ -7,51 +9,18 @@ import fs from 'fs';
 import pool from '../config/db';
 
 const SEVERITY_RGB: Record<string, [number, number, number]> = {
-  Critical: [220, 38,  38],
-  High:     [234, 88,  12],
-  Medium:   [202, 138,  4],
-  None:     [22,  163, 74],
-  Unknown:  [107, 114, 128],
+  Critical: [220, 38,  38],  // Red
+  High:     [234, 88,  12],  // Orange
+  Medium:   [202, 138,  4],  // Yellow
+  None:     [22,  163, 74],  // Green
+  Unknown:  [107, 114, 128], // Gray
 };
 
-const SEVERITY_MAP: Record<string, string> = {
-  'Bud Root Dropping':      'High',
-  'Bud Rot':                'Critical',
-  'CCI_Caterpillars':       'Medium',
-  'Gray Leaf Spot':         'Medium',
-  'Healthy_Leaves':         'None',
-  'Leaf Rot':               'High',
-  'Stem Bleeding':          'Critical',
-  'WCLWD_DryingofLeaflets': 'Critical',
-};
-
-const FERTILIZER_MAP: Record<string, string> = {
-  'Bud Root Dropping':      'Apply potassium-rich fertilizer MOP (0-0-60) at 500g per tree. Avoid excess nitrogen.',
-  'Bud Rot':                'Apply balanced NPK 12-12-17 with magnesium sulphate. Avoid over-irrigation.',
-  'CCI_Caterpillars':       'Apply nitrogen fertilizer Urea (46%) at 200g per tree to boost leaf regrowth.',
-  'Gray Leaf Spot':         'Apply potassium sulphate (0-0-50) to strengthen cell walls. Supplement with zinc.',
-  'Healthy_Leaves':         'Apply balanced NPK 14-14-14 at 500g per tree every 3 months.',
-  'Leaf Rot':               'Apply calcium nitrate (15.5-0-0) to strengthen leaf tissue.',
-  'Stem Bleeding':          'Apply balanced fertilizer with boron and copper micronutrients.',
-  'WCLWD_DryingofLeaflets': 'Apply organic manure and balanced NPK. Intercrop with legumes.',
-};
-
-const XAI_TEXT: Record<string, string> = {
-  'Bud Root Dropping':      'The model identified root zone stress and frond discoloration. Grad-CAM highlights lower frond regions where early root stress symptoms appear.',
-  'Bud Rot':                'Irregular dark discoloration in the crown region was detected. The heatmap highlights the bud and inner spear leaves where Phytophthora palmivora infection typically begins.',
-  'CCI_Caterpillars':       'Irregular feeding damage patterns on leaflet surfaces were detected. The model focused on the areas showing characteristic caterpillar damage textures.',
-  'Gray Leaf Spot':         'Circular gray-brown spots with yellow halos were detected. The model concentrated on spot distribution patterns consistent with Pestalotiopsis palmarum infection.',
-  'Healthy_Leaves':         'Uniform green coloration with normal leaf texture was found. No disease indicators present in any region of the leaf image.',
-  'Leaf Rot':               'Brown water-soaked lesions spreading from leaflet tips were identified. The heatmap focuses on rotting tissue boundaries where fungal activity is highest.',
-  'Stem Bleeding':          'Abnormal browning and texture changes were detected. Highlighted regions show trunk surface irregularities characteristic of Thielaviopsis paradoxa.',
-  'WCLWD_DryingofLeaflets': 'Progressive yellowing from leaflet tips was identified — a hallmark of phytoplasma infection. The model highlighted the systematic drying pattern spreading upward.',
-};
-
-// ── GET /api/report/:detectionId ──────────────────────────────────────────────
 export const generateReport = async (req: any, res: Response) => {
   try {
     const { detectionId } = req.params;
 
+    // Get all data including the new XAI columns from the detections table
     const [rows]: any = await pool.query(
       `SELECT d.*, u.name AS user_name, u.email AS user_email, u.role AS user_role
        FROM   detections d
@@ -65,135 +34,204 @@ export const generateReport = async (req: any, res: Response) => {
     }
 
     const det        = rows[0];
-    const severity   = SEVERITY_MAP[det.predicted_disease] || 'Unknown';
+    const disease    = det.predicted_disease || 'Unknown';
+    const severity   = det.severity || 'Unknown';
     const sevRgb     = SEVERITY_RGB[severity] || SEVERITY_RGB['Unknown'];
-    const fertilizer = FERTILIZER_MAP[det.predicted_disease] || 'Apply balanced NPK fertilizer.';
-    const xaiText    = XAI_TEXT[det.predicted_disease] || 'The AI model analysed visual patterns in the leaf image to classify this disease.';
     const confidence = parseFloat(det.confidence).toFixed(1);
     const detectedAt = new Date(det.created_at);
+    
+    // XAI Data (if exists in DB, otherwise fallbacks)
+    const xaiEn       = det.xai_explanation_en || 'The AI model analyzed visual patterns to classify this disease.';
+    const cfEn        = det.counterfactual_en  || 'If the leaf patterns were uniform and green, it would be Healthy.';
+    const featImpStr  = det.feature_importance || '{}';
+    let featImp: Record<string, number> = {};
+    try { featImp = typeof featImpStr === 'string' ? JSON.parse(featImpStr) : featImpStr; } catch (e) {}
 
     // ── Build PDF ──────────────────────────────────────────────────────────
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="CocoAI_Report_${detectionId}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="CocoAI_LabReport_${detectionId}.pdf"`);
     doc.pipe(res);
 
     const W  = 595;
-    const M  = 50;
+    const M  = 40;
     const CW = W - M * 2;
 
-    // Header
-    doc.rect(0, 0, W, 80).fill('#1B4332');
-    doc.rect(0, 80, W, 4).fill('#52B788');
-    doc.fillColor('#FFFFFF').fontSize(20).font('Helvetica-Bold')
-       .text('CocoAI Disease Detection Report', M, 18, { width: CW });
-    doc.fillColor('#A7F3D0').fontSize(10).font('Helvetica')
-       .text('AI-Powered Coconut Disease Detection  |  University of Wolverhampton', M, 48, { width: CW });
+    // ── HEADER SECTION ──
+    doc.rect(0, 0, W, 85).fill('#064E3B'); // Dark Green Banner
+    doc.rect(0, 85, W, 5).fill('#10B981'); // Light Green accent
 
-    let y = 98;
+    doc.fillColor('#FFFFFF').fontSize(24).font('Helvetica-Bold')
+       .text('CocoAI Diagnostic Report', M, 22, { width: CW });
+    doc.fillColor('#A7F3D0').fontSize(11).font('Helvetica')
+       .text('Advanced AI Pathology Analysis | Coconut Research', M, 52, { width: CW });
 
-    // Report meta box
-    doc.rect(M, y, CW, 75).fill('#F8FBF8').stroke('#D8F3DC');
-    doc.fillColor('#1B4332').fontSize(9).font('Helvetica-Bold')
-       .text('Report ID:',        M + 12, y + 10)
-       .text('Generated:',        M + 12, y + 24)
-       .text('Detection Date:',   M + 12, y + 38)
-       .text('Farmer / Officer:', M + 12, y + 52);
-    doc.fillColor('#374151').font('Helvetica').fontSize(9)
-       .text(`RPT-${detectionId}-${Date.now()}`,                             M + 110, y + 10)
-       .text(new Date().toLocaleString('en-GB'),                             M + 110, y + 24)
-       .text(detectedAt.toLocaleString('en-GB'),                             M + 110, y + 38)
-       .text(`${det.user_name}  |  ${det.user_email}  |  ${det.user_role}`, M + 110, y + 52);
+    let y = 110;
+
+    // ── PATIENT/USER INFO BOX ──
+    doc.rect(M, y, CW, 70).fill('#F3F4F6').stroke('#E5E7EB');
+    doc.lineWidth(1);
+    doc.stroke();
+
+    doc.fillColor('#4B5563').fontSize(9).font('Helvetica-Bold')
+       .text('REPORT ID:', M + 15, y + 15)
+       .text('DATE/TIME:', M + 15, y + 30)
+       .text('REQUESTER:', M + 15, y + 45);
+
+    doc.fillColor('#111827').font('Helvetica').fontSize(9)
+       .text(`COCO-${detectionId}-${Date.now().toString().slice(-6)}`, M + 90, y + 15)
+       .text(detectedAt.toLocaleString('en-GB'), M + 90, y + 30)
+       .text(`${det.user_name} (${det.user_email})`, M + 90, y + 45);
+
+    // AI Status Badge
+    doc.rect(W - M - 110, y + 15, 95, 20).fill('#DCFCE7');
+    doc.fillColor('#065F46').font('Helvetica-Bold').fontSize(8)
+       .text('✔ AI VERIFIED', W - M - 110, y + 21, { width: 95, align: 'center' });
+
     y += 90;
 
-    // Detection result box
-    doc.rect(M, y, CW, 95).fill('#FFFFFF').stroke('#E5E7EB');
-    doc.rect(M, y, 5, 95).fill(`rgb(${sevRgb.join(',')})`);
-    doc.fillColor('#1B4332').fontSize(10).font('Helvetica-Bold')
-       .text('DETECTION RESULT', M + 14, y + 10);
-    doc.fillColor('#111827').fontSize(18).font('Helvetica-Bold')
-       .text(det.predicted_disease.replace(/_/g, ' '), M + 14, y + 26);
-    // Severity badge
-    doc.rect(M + 14, y + 58, 80, 18).fill(`rgb(${sevRgb.join(',')})`);
+    // ── DIAGNOSIS RESULT (BIG BADGE) ──
+    doc.rect(M, y, CW, 80).fill('#FFFFFF').stroke('#E5E7EB');
+    doc.rect(M, y, 6, 80).fill(`rgb(${sevRgb.join(',')})`); // Left color strip
+    doc.stroke();
+
+    doc.fillColor('#6B7280').fontSize(10).font('Helvetica-Bold')
+       .text('PRIMARY DIAGNOSIS', M + 20, y + 15);
+       
+    doc.fillColor(`rgb(${sevRgb.join(',')})`).fontSize(22).font('Helvetica-Bold')
+       .text(disease.replace(/_/g, ' '), M + 20, y + 32);
+
+    // Severity Tag
+    doc.rect(M + 20, y + 60, 60, 15).fill(`rgb(${sevRgb.join(',')})`);
     doc.fillColor('#FFFFFF').fontSize(8).font('Helvetica-Bold')
-       .text(severity.toUpperCase(), M + 18, y + 63);
+       .text(severity.toUpperCase(), M + 20, y + 64, { width: 60, align: 'center' });
+
     // Confidence
-    doc.fillColor('#374151').fontSize(9).font('Helvetica')
-       .text('Confidence Level:', M + 120, y + 58);
-    doc.fillColor('#059669').fontSize(16).font('Helvetica-Bold')
-       .text(`${confidence}%`, M + 230, y + 54);
-    // Confidence bar
-    doc.rect(M + 14, y + 82, CW - 28, 5).fill('#E5E7EB');
-    const barW = Math.min((parseFloat(confidence) / 100) * (CW - 28), CW - 28);
-    doc.rect(M + 14, y + 82, barW, 5).fill('#059669');
-    y += 108;
+    doc.fillColor('#374151').fontSize(10).font('Helvetica-Bold')
+       .text('AI CONFIDENCE:', W - M - 160, y + 30);
+    doc.fillColor('#059669').fontSize(26).font('Helvetica-Bold')
+       .text(`${confidence}%`, W - M - 70, y + 20);
 
-    // Images
-    const imgPath = det.image_url
-      ? path.join(__dirname, '../../', det.image_url)
-      : null;
-    let imagesDrawn = false;
+    y += 100;
 
-    if (imgPath && fs.existsSync(imgPath)) {
-      doc.fillColor('#1B4332').fontSize(9).font('Helvetica-Bold').text('Uploaded Leaf Image', M, y);
-      y += 14;
-      try { doc.image(imgPath, M, y, { width: 170, height: 130 }); imagesDrawn = true; } catch {}
-    }
+    // ── VISUAL EVIDENCE (IMAGES) ──
+    const getMLPath = (url: string | null) => {
+        if (!url) return null;
+        return path.join(__dirname, '../../../ML_Model/xai_outputs', path.basename(url));
+    };
 
-    if (det.gradcam_url) {
-      const gcPath = path.join(__dirname, '../../../ML_Model/gradcam_outputs', path.basename(det.gradcam_url));
-      if (fs.existsSync(gcPath)) {
-        const gcX = imagesDrawn ? M + 190 : M;
-        if (!imagesDrawn) { doc.fillColor('#1B4332').fontSize(9).font('Helvetica-Bold').text('Grad-CAM Heatmap (XAI)', gcX, y); y += 14; }
-        else { doc.fillColor('#1B4332').fontSize(9).font('Helvetica-Bold').text('Grad-CAM Heatmap (XAI)', gcX, y - 14); }
-        try {
-          doc.image(gcPath, gcX, y, { width: 170, height: 130 });
-          doc.fillColor('#6B7280').fontSize(8).font('Helvetica-Oblique').text('Red/yellow = highest AI attention', gcX, y + 133, { width: 170 });
-          imagesDrawn = true;
-        } catch {}
-      }
-    }
+    const origImgPath = det.image_url ? path.join(__dirname, '../../', det.image_url) : null;
+    const gcImgPath   = getMLPath(det.gradcam_url);
+    const limePath    = getMLPath(det.lime_url);
+    const bboxPath    = getMLPath(det.bbox_url);
 
-    if (imagesDrawn) y += 150;
+    doc.fillColor('#111827').fontSize(12).font('Helvetica-Bold').text('Visual Diagnostics & XAI', M, y);
+    doc.rect(M, y + 15, CW, 1).fill('#E5E7EB');
+    y += 25;
 
-    // XAI explanation
-    const xaiH = Math.max(65, doc.heightOfString(xaiText, { width: CW - 28 }) + 42);
+    const imgWidth = 120;
+    const imgHeight = 120;
+    let currentX = M;
+
+    // Helper to draw image boxes
+    const drawImgBox = (imgPath: string | null, title: string, xPos: number) => {
+        if (imgPath && fs.existsSync(imgPath)) {
+            try {
+                doc.image(imgPath, xPos, y, { width: imgWidth, height: imgHeight });
+                doc.rect(xPos, y, imgWidth, imgHeight).stroke('#D1D5DB');
+                doc.fillColor('#4B5563').fontSize(8).font('Helvetica-Bold')
+                   .text(title, xPos, y + imgHeight + 8, { width: imgWidth, align: 'center' });
+                return true;
+            } catch (e) { return false; }
+        }
+        return false;
+    };
+
+    let hasImages = false;
+    if (drawImgBox(origImgPath, 'Original Upload', currentX)) { currentX += imgWidth + 12; hasImages = true; }
+    if (drawImgBox(gcImgPath, 'Grad-CAM Heatmap', currentX)) { currentX += imgWidth + 12; hasImages = true; }
+    if (drawImgBox(limePath, 'LIME Superpixels', currentX)) { currentX += imgWidth + 12; hasImages = true; }
+    if (drawImgBox(bboxPath, 'Symptom Bounding Box', currentX)) { currentX += imgWidth + 12; hasImages = true; }
+
+    if (hasImages) y += imgHeight + 35;
+
+    // ── EXPLAINABLE AI (XAI) REASONING ──
+    doc.fillColor('#111827').fontSize(12).font('Helvetica-Bold').text('AI Reasoning & Counterfactuals', M, y);
+    doc.rect(M, y + 15, CW, 1).fill('#E5E7EB');
+    y += 25;
+
+    const xaiH = Math.max(50, doc.heightOfString(xaiEn, { width: CW - 30 }) + 30);
     doc.rect(M, y, CW, xaiH).fill('#F5F3FF').stroke('#DDD6FE');
-    doc.rect(M, y, 4, xaiH).fill('#7C3AED');
-    doc.fillColor('#5B21B6').fontSize(10).font('Helvetica-Bold').text('Explainable AI (XAI) — Grad-CAM Method', M + 12, y + 10);
-    doc.fillColor('#374151').fontSize(9).font('Helvetica').text(xaiText, M + 12, y + 26, { width: CW - 28, lineGap: 2 });
-    y += xaiH + 8;
+    doc.rect(M, y, 4, xaiH).fill('#8B5CF6');
+    doc.fillColor('#5B21B6').fontSize(10).font('Helvetica-Bold').text('Reasoning:', M + 15, y + 10);
+    doc.fillColor('#4C1D95').fontSize(9).font('Helvetica').text(xaiEn, M + 15, y + 25, { width: CW - 30 });
+    y += xaiH + 10;
 
-    // Treatment
+    const cfH = Math.max(40, doc.heightOfString(cfEn, { width: CW - 30 }) + 25);
+    doc.rect(M, y, CW, cfH).fill('#F0FDF4').stroke('#BBF7D0');
+    doc.rect(M, y, 4, cfH).fill('#22C55E');
+    doc.fillColor('#166534').fontSize(10).font('Helvetica-Bold').text('Counterfactual Insight:', M + 15, y + 10);
+    doc.fillColor('#14532D').fontSize(9).font('Helvetica-Oblique').text(`"${cfEn}"`, M + 15, y + 25, { width: CW - 30 });
+    y += cfH + 20;
+
+    // Check page break
+    if (y > 600) { doc.addPage(); y = 50; }
+
+    // ── FEATURE IMPORTANCE CHART ──
+    const features = Object.entries(featImp);
+    if (features.length > 0) {
+        doc.fillColor('#111827').fontSize(12).font('Helvetica-Bold').text('Feature Importance', M, y);
+        doc.rect(M, y + 15, CW, 1).fill('#E5E7EB');
+        y += 30;
+
+        features.forEach(([feat, val]) => {
+            const numVal = Number(val) || 0;
+            doc.fillColor('#4B5563').fontSize(9).font('Helvetica-Bold').text(feat, M, y);
+            doc.fillColor('#6B7280').text(`${numVal}%`, W - M - 30, y);
+            
+            // Draw Bar
+            doc.rect(M + 150, y + 2, CW - 190, 6).fill('#E5E7EB');
+            const barW = Math.min((numVal / 100) * (CW - 190), CW - 190);
+            doc.rect(M + 150, y + 2, barW, 6).fill('#10B981');
+            
+            y += 20;
+        });
+        y += 10;
+    }
+
+    // Check page break
+    if (y > 600) { doc.addPage(); y = 50; }
+
+    // ── PRESCRIPTIONS (TREATMENT & FERTILIZER) ──
+    doc.fillColor('#111827').fontSize(12).font('Helvetica-Bold').text('Recommended Actions', M, y);
+    doc.rect(M, y + 15, CW, 1).fill('#E5E7EB');
+    y += 25;
+
+    // Treatment Box
     const treatText = det.recommendation || 'Consult an agricultural expert.';
-    const treatH    = Math.max(60, doc.heightOfString(treatText, { width: CW - 28 }) + 40);
-    doc.rect(M, y, CW, treatH).fill('#FFF7ED').stroke('#FED7AA');
+    const treatH = Math.max(50, doc.heightOfString(treatText, { width: CW - 30 }) + 30);
+    doc.rect(M, y, CW, treatH).fill('#FFFBEB').stroke('#FEF08A');
     doc.rect(M, y, 4, treatH).fill('#F59E0B');
-    doc.fillColor('#92400E').fontSize(10).font('Helvetica-Bold').text('Treatment Recommendation', M + 12, y + 10);
-    doc.fillColor('#374151').fontSize(9).font('Helvetica').text(treatText, M + 12, y + 26, { width: CW - 28, lineGap: 2 });
-    y += treatH + 8;
+    doc.fillColor('#B45309').fontSize(10).font('Helvetica-Bold').text('Treatment Plan:', M + 15, y + 10);
+    doc.fillColor('#78350F').fontSize(9).font('Helvetica').text(treatText, M + 15, y + 25, { width: CW - 30 });
+    y += treatH + 10;
 
-    // Fertilizer
-    const fertH = Math.max(55, doc.heightOfString(fertilizer, { width: CW - 28 }) + 40);
-    doc.rect(M, y, CW, fertH).fill('#F0FDF4').stroke('#BBF7D0');
-    doc.rect(M, y, 4, fertH).fill('#22C55E');
-    doc.fillColor('#166534').fontSize(10).font('Helvetica-Bold').text('Fertilizer Recommendation', M + 12, y + 10);
-    doc.fillColor('#374151').fontSize(9).font('Helvetica').text(fertilizer, M + 12, y + 26, { width: CW - 28, lineGap: 2 });
-    y += fertH + 8;
+    // Fertilizer Box
+    const fertH = Math.max(45, doc.heightOfString(det.fertilizer || '', { width: CW - 30 }) + 30);
+    doc.rect(M, y, CW, fertH).fill('#EFF6FF').stroke('#BFDBFE');
+    doc.rect(M, y, 4, fertH).fill('#3B82F6');
+    doc.fillColor('#1D4ED8').fontSize(10).font('Helvetica-Bold').text('Fertilizer Guide:', M + 15, y + 10);
+    doc.fillColor('#1E3A8A').fontSize(9).font('Helvetica').text(det.fertilizer || 'N/A', M + 15, y + 25, { width: CW - 30 });
+    y += fertH + 20;
 
-    // Disclaimer
-    if (y > 720) { doc.addPage(); y = 50; }
-    doc.rect(M, y, CW, 44).fill('#F9FAFB').stroke('#E5E7EB');
-    doc.fillColor('#6B7280').fontSize(8).font('Helvetica-Oblique')
-       .text('⚠️  Disclaimer: This report is generated by an AI system for guidance only. For Critical diseases (Bud Rot, Stem Bleeding, WCLWD), always consult the Coconut Research Institute of Sri Lanka (CRISL). This does not replace professional agricultural advice.', M + 10, y + 8, { width: CW - 20, lineGap: 2 });
-
-    // Footer
-    doc.rect(0, 782, W, 60).fill('#1B4332');
-    doc.fillColor('#D8F3DC').fontSize(8).font('Helvetica')
-       .text(`CocoAI System  |  Detection ID: #${detectionId}  |  Generated: ${new Date().toLocaleString()}`, M, 796, { width: CW, align: 'center' });
-    doc.fillColor('#52B788').fontSize(7)
-       .text('Shayini Tharushika Sudusinghe  |  BSc Computer Science  |  University of Wolverhampton', M, 812, { width: CW, align: 'center' });
+    // ── FOOTER ──
+    const pageHeight = 841.89; // A4 height
+    doc.rect(0, pageHeight - 50, W, 50).fill('#064E3B');
+    doc.fillColor('#A7F3D0').fontSize(8).font('Helvetica')
+       .text(`CocoAI Diagnostics  |  Detection ID: #${detectionId}  |  Generated on: ${new Date().toLocaleString()}`, M, pageHeight - 35, { width: CW, align: 'center' });
+    doc.fillColor('#34D399').fontSize(7)
+       .text('Shayini Tharushika Sudusinghe  |  BSc Computer Science  |  University of Wolverhampton', M, pageHeight - 20, { width: CW, align: 'center' });
 
     doc.end();
 

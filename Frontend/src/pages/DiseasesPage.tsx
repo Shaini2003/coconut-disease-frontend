@@ -1,182 +1,363 @@
 // Frontend/src/pages/DiseasesPage.tsx
-import { AlertTriangle, CheckCircle, Search, XCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+// ✅ UPGRADED PREMIUM UI: Added Modals, Better Cards, Hover Animations, and Bilingual Support
+
+import { useState } from 'react';
+import { Search, AlertCircle, AlertTriangle, ShieldCheck, X, ChevronRight, Activity, Droplets, Leaf } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
-const ML_URL = 'http://localhost:8000';
-interface Disease { name: string; severity: string; recommendation: string; fertilizer: string; }
+// --- Types ---
+type Severity = 'Critical' | 'High' | 'Medium' | 'None';
 
-const DISEASE_DETAILS: Record<string, { scientific_name: string; description: { en: string; si: string }; symptoms: { en: string[]; si: string[] }; causes: { en: string[]; si: string[] }; prevention: { en: string; si: string }; }> = {
-  'Bud Root Dropping': {
-    scientific_name: 'Phytophthora spp.',
-    description: { en: 'A condition where the bud roots begin to drop prematurely, affecting the overall health and stability of the coconut palm.', si: 'පොල් ගසේ බද් මූල කලින් ඇද වැටෙන තත්ත්වයකි, ගසේ සමස්ත සෞඛ්‍යය සහ ස්ථාවරත්වය කෙරෙහි බලපායි.' },
-    symptoms: { en: ['Premature dropping of bud roots', 'Yellowing of lower fronds', 'Weakened crown structure'], si: ['බද් මූල කලින් ඇද වැටීම', 'පහළ කොළ කහ වීම', 'ශීර්ෂ ව්‍යුහය දුර්වල වීම'] },
-    causes: { en: ['Fungal infection', 'Waterlogged soil', 'Poor drainage'], si: ['දිලීර ආසාදනය', 'ජලය ගැළී ගිය පස', 'දුර්වල ජල බැසයාම'] },
-    prevention: { en: 'Ensure proper drainage, avoid waterlogging, and apply preventive fungicide during rainy season.', si: 'නිසි ජල බැසයාම සහතික කරන්න, ජලය ගැළීම වළකින්න, සහ වර්ෂා ඍතුවේ වැළැක්වීමේ දිලීරනාශකය යොදන්න.' },
-  },
-  'Bud Rot': {
-    scientific_name: 'Phytophthora palmivora',
-    description: { en: 'A fatal disease causing rotting of the growing bud (heart) of the coconut palm. Highly dangerous and can kill the tree quickly.', si: 'පොල් ගසේ වැඩෙන බද (හදවත) කුළු වීම ඇති කරන මාරාන්තික රෝගයකි. ඉතා භයානකයි, ගස ඉක්මනින් මරා දැමිය හැකිය.' },
-    symptoms: { en: ['Yellowing of youngest leaves', 'Foul smell from crown', 'Rotting of the spear leaf', 'Wilting of the crown'], si: ['නවතම කොළ කහ වීම', 'ශීර්ෂ ප්‍රදේශයෙන් අශෝභන සුවඳ', 'ශූල කොළ කුළු ගැනීම', 'ශීර්ෂ ප්‍රදේශය කලිගෑෙෂ'] },
-    causes: { en: ['Fungus Phytophthora palmivora', 'High humidity', 'Continuous heavy rainfall'], si: ['Phytophthora palmivora දිලීරය', 'ඉහළ ආර්ද්‍රතාව', 'නිරන්තර අධික වර්ෂාව'] },
-    prevention: { en: 'Apply Bordeaux mixture to the crown, ensure good drainage, and avoid wounding the crown.', si: 'ශීර්ෂ ප්‍රදේශයට Bordeaux මිශ්‍රණය ගැල්වන්න, හොඳ ජල බැසයාම සහතික කරන්න, ශීර්ෂ ප්‍රදේශය තුවාල නොකරන්න.' },
-  },
-  'CCI_Caterpillars': {
-    scientific_name: 'Opisina arenosella',
-    description: { en: 'Caterpillar infestation that causes severe damage to coconut leaves by feeding on leaf tissue, reducing photosynthesis.', si: 'කොළ පටක ආහාරයට ගෙන ප්‍රභාසංශ්ලේෂණය අඩු කරමින් පොල් කොළ වලට දරුණු හානි කරන රූකඩ ආක්‍රමණයයි.' },
-    symptoms: { en: ['White streaks on leaves', 'Leaf skeletonization', 'Brownish dry patches', 'Presence of caterpillars on leaves'], si: ['කොළ වල සුදු ඉරි', 'කොළ ශිරා ජාලය ඉතිරි වීම', 'දුඹුරු වියළි ලප', 'කොළ මත රූකඩ සිටීම'] },
-    causes: { en: ['Coconut caterpillar (Opisina arenosella)', 'High temperature and dry conditions'], si: ['පොල් රූකඩ (Opisina arenosella)', 'ඉහළ උෂ්ණත්වය සහ වියළි කාලගුණය'] },
-    prevention: { en: 'Introduce natural predators, apply biological control agents (Bt), and monitor regularly.', si: 'ස්වාභාවික ගොදුරු කරන්නන් හඳුන්වා දෙන්න, ජෛව පාලන ක්‍රියාකාරීන් (Bt) යොදන්න, නිතිපතා නිරීක්ෂණය කරන්න.' },
-  },
-  'Gray Leaf Spot': {
-    scientific_name: 'Pestalotiopsis palmarum',
-    description: { en: 'A common fungal disease causing grayish-brown spots on leaves, reducing the photosynthetic area.', si: 'කොළ වල අළු-දුඹුරු ලප ඇති කරන සාමාන්‍ය දිලීර රෝගයකි, ප්‍රභාසංශ්ලේෂණ ප්‍රදේශය අඩු කරයි.' },
-    symptoms: { en: ['Small gray spots on leaves', 'Spots with dark margins', 'Drying of leaf tips', 'Yellowing around spots'], si: ['කොළ මත කුඩා අළු ලප', 'අඳුරු කෙළවරු සහිත ලප', 'කොළ කෙළවරු වියළීම', 'ලප වටා කහ වීම'] },
-    causes: { en: ['Fungus Pestalotiopsis', 'High humidity', 'Potassium deficiency'], si: ['Pestalotiopsis දිලීරය', 'ඉහළ ආර්ද්‍රතාව', 'පොටෑසියම් ඌනතාවය'] },
-    prevention: { en: 'Maintain proper plant nutrition, ensure good air circulation, and prune infected leaves.', si: 'නිසි ශාක පෝෂණය පවත්වා ගන්න, හොඳ වාතාශ්‍රය සහතික කරන්න, ආසාදිත කොළ කේතෝ කරන්න.' },
-  },
-  'Healthy_Leaves': {
-    scientific_name: 'N/A',
-    description: { en: 'The coconut palm is in a healthy state with no visible signs of disease. Continue regular maintenance and monitoring.', si: 'පොල් ගස රෝගයේ දෘශ්‍ය ලක්ෂණ නොමැතිව සෞඛ්‍ය සම්පන්න තත්ත්වයකදී ඇත. නිතිපතා නඩත්තු සහ නිරීක්ෂණය දිගටම කරන්න.' },
-    symptoms: { en: ['Deep green color', 'Strong upright fronds', 'Regular nut production'], si: ['ගැඹුරු කොළ වර්ණය', 'ශක්තිමත් සෘජු ශාඛා', 'නිතිපතා ගෙඩි නිෂ්පාදනය'] },
-    causes: { en: ['No disease present'], si: ['රෝගය නොමැත'] },
-    prevention: { en: 'Continue regular fertilization, irrigation, and periodic inspection for early signs of disease.', si: 'නිතිපතා පොහොර යෙදීම, ජල සැපයීම, සහ රෝගයේ ඉක්මන් ලක්ෂණ සඳහා වාරිකව පරීක්ෂාව දිගටම කරන්න.' },
-  },
-  'Leaf Rot': {
-    scientific_name: 'Colletotrichum gloeosporioides',
-    description: { en: 'A fungal disease causing rotting and browning of coconut leaves, starting from the tips and spreading inward.', si: 'කෙළවරින් ආරම්භ වී ඇතුළට ව්‍යාප්ත වන, පොල් කොළ කුළු ගෑීම සහ දුඹුරු වීම ඇති කරන දිලීර රෝගයකි.' },
-    symptoms: { en: ['Brown discoloration starting from leaf tips', 'Rotting leaf tissue', 'Wilting fronds', 'Dark lesions on leaflets'], si: ['කොළ කෙළවරින් ආරම්භ වන දුඹුරු විවර්ණ වීම', 'කොළ පටක කුළු ගෑීම', 'ශාඛා ශෝෂණය', 'ශාඛා කොළ මත අඳුරු තුවාල'] },
-    causes: { en: ['Fungal infection', 'Excessive moisture', 'Poor air circulation'], si: ['දිලීර ආසාදනය', 'අධික තෙතමනය', 'දුර්වල වාතාශ්‍රය'] },
-    prevention: { en: 'Improve drainage, prune affected leaves, and apply copper-based fungicides.', si: 'ජල බැසයාම වැඩිදියුණු කරන්න, බලපෑමට ලක් වූ කොළ කේතෝ කරන්න, තඹ-පදනම් දිලීරනාශක යොදන්න.' },
-  },
-  'Stem Bleeding': {
-    scientific_name: 'Thielaviopsis paradoxa',
-    description: { en: 'A serious disease characterized by dark reddish-brown liquid oozing from cracks in the trunk.', si: 'ගස්කඳෙහි ඉරිතැලීම් වලින් අඳුරු රතු-දුඹුරු දියර ගලා ඒමෙන් සංලක්ෂිත දරුණු රෝගයකි.' },
-    symptoms: { en: ['Dark reddish-brown liquid on trunk', 'Bark turning black', 'Peeling bark', 'Decaying inner tissue'], si: ['ගස්කඳෙහි අඳුරු රතු-දුඹුරු දියර', 'පොතු කළු වීම', 'පොතු ගැලීම', 'ඇතුළු පටක ක්ෂය වීම'] },
-    causes: { en: ['Fungus Thielaviopsis paradoxa', 'Physical injury to trunk', 'Poor drainage'], si: ['Thielaviopsis paradoxa දිලීරය', 'ගස්කඳට භෞතික තුවාල', 'දුර්වල ජල බැසයාම'] },
-    prevention: { en: 'Avoid trunk injuries, maintain good drainage, and apply Bordeaux paste to wounds.', si: 'ගස්කඳ තුවාල නොකරන්න, හොඳ ජල බැසයාම පවත්වා ගන්න, තුවාල වලට Bordeaux කිරිල ගාන්න.' },
-  },
-  'WCLWD_DryingofLeaflets': {
-    scientific_name: 'Candidatus Phytoplasma',
-    description: { en: 'Weligama Coconut Leaf Wilt Disease — a serious phytoplasma disease causing progressive drying of leaflets.', si: 'වෙළිගම පොල් කොළ萎凋 රෝගය — ශාඛා කොළ ක්‍රමික වශයෙන් වියළීම ඇති කරන දරුණු phytoplasma රෝගයකි.' },
-    symptoms: { en: ['Yellowing and drying of leaflets from tip', 'Progressive wilting from older to younger fronds', 'Reduced nut production', 'Thinning of crown'], si: ['ශාඛා කොළ කෙළවරින් කහ වීම සහ වියළීම', 'පැරණි සිට නව ශාඛා දෙසට ක්‍රමිකව ශෝෂණය', 'ගෙඩි නිෂ්පාදනය අඩු වීම', 'ශීර්ෂ ශාඛා ක්ෂය වීම'] },
-    causes: { en: ['Phytoplasma (bacteria-like organism)', 'Spread by planthopper insects'], si: ['Phytoplasma (බැක්ටීරියා-සමාන ජීවියෙකු)', 'ශාකය උකු කන කෘමීන් විසින් ව්‍යාප්ත කෙරේ'] },
-    prevention: { en: 'Control insect vectors, remove and destroy severely infected palms, report to Coconut Research Institute.', si: 'කෘමි රෝග ව්‍යාප්තිකාරකයන් පාලනය කරන්න, දරුණු ලෙස ආසාදිත ගස් ඉවත් කර විනාශ කරන්න, පොල් පර්යේෂණ ආයතනයට වාර්තා කරන්න.' },
-  },
-};
+interface DiseaseInfo {
+  id: string;
+  name: { en: string; si: string };
+  scientificName: string;
+  severity: Severity;
+  shortDesc: { en: string; si: string };
+  fullDesc: { en: string; si: string };
+  symptoms: { en: string[]; si: string[] };
+  treatment: { en: string; si: string };
+}
 
-export default function DiseasesPage() {
-  const { t, language } = useTranslation();
-  const [diseases,         setDiseases]         = useState<Disease[]>([]);
-  const [filtered,         setFiltered]         = useState<Disease[]>([]);
-  const [searchTerm,       setSearchTerm]       = useState('');
-  const [selectedSeverity, setSelectedSeverity] = useState('all');
-  const [selectedDisease,  setSelectedDisease]  = useState<Disease | null>(null);
-  const [isLoading,        setIsLoading]        = useState(true);
+// --- Mock Database for the Library ---
+const DISEASES: DiseaseInfo[] = [
+  {
+    id: 'bud-rot',
+    name: { en: 'Bud Rot', si: 'බද් රොට් (මොටෙයියන් කුණුවීම)' },
+    scientificName: 'Phytophthora palmivora',
+    severity: 'Critical',
+    shortDesc: { 
+      en: 'A fatal disease causing rotting of the growing bud (heart) of the coconut palm.', 
+      si: 'පොල් ගසේ වැඩෙන මදය (ගොබය) කුණුවී යන ඉතා භයානක රෝගයකි.' 
+    },
+    fullDesc: {
+      en: 'Bud rot is one of the most devastating diseases of the coconut palm. It affects the apical growing point (bud), causing it to rot and emit a foul smell. If left untreated, the entire crown falls off, leading to the death of the tree.',
+      si: 'මෙය පොල් ගසට වැළඳෙන ඉතාම විනාශකාරී රෝගයකි. ගසේ ගොබය කුණුවී දුර්ගන්ධයක් හමන අතර, ප්‍රතිකාර නොකළහොත් ගස සම්පූර්ණයෙන්ම මිය යයි.'
+    },
+    symptoms: {
+      en: ['Yellowing of the youngest leaf', 'Rotting of the spindle', 'Foul odor from the crown', 'Crown collapse'],
+      si: ['ළාබාලතම පත්‍රය කහ පැහැ වීම', 'ගොබය දිරාපත් වීම', 'ගස මුදුනෙන් දුර්ගන්ධයක් හැමීම', 'මුදුන කඩා වැටීම']
+    },
+    treatment: {
+      en: 'Remove and destroy the infected tissue. Apply Copper Oxychloride (3g/L of water) directly to the crown.',
+      si: 'ආසාදිත කොටස් කපා පුළුස්සා දමන්න. Copper Oxychloride (වතුර ලීටරයකට ග්‍රෑම් 3ක්) ගොබයට යොදන්න.'
+    }
+  },
+  {
+    id: 'wclwd',
+    name: { en: 'WCLWD (Wilt Disease)', si: 'වැලිගම පොල් කොළ මැලවීමේ රෝගය' },
+    scientificName: 'Phytoplasma spp.',
+    severity: 'Critical',
+    shortDesc: { 
+      en: 'A systemic and fatal disease causing severe yellowing, flaccidity, and drying of leaflets.', 
+      si: 'පොල් කොළ කහ පැහැ ගැන්වීම, මැලවීම සහ වේලී යාම සිදු කරන භයානක රෝගයකි.' 
+    },
+    fullDesc: {
+      en: 'Weligama Coconut Leaf Wilt Disease (WCLWD) is a severe phytoplasma-borne disease. It gradually weakens the palm, drastically reducing yield and eventually causing the death of the tree. It is vector-transmitted.',
+      si: 'මෙය ශ්‍රී ලංකාවේ දකුණු පළාතේ බහුලව දක්නට ලැබෙන, ගසේ අස්වැන්න සම්පූර්ණයෙන්ම විනාශ කර ගස මරණයට පත් කරන රෝගයකි.'
+    },
+    symptoms: {
+      en: ['Flaccidity of leaflets', 'Yellowing of fronds', 'Premature nut fall', 'Tapering of the trunk'],
+      si: ['පොල් කොළ එල්ලා වැටීම', 'කොළ කහ පැහැ ගැන්වීම', 'ගෙඩි කුඩා කාලයේදීම වැටීම', 'කඳ සිහින් වීම']
+    },
+    treatment: {
+      en: 'No known cure. Eradicate severely affected palms to prevent spread. Apply Imidacloprid to control leafhopper vectors. Contact CRISL immediately.',
+      si: 'ස්ථිර ප්‍රතිකාරයක් නොමැත. රෝගී ගස් කපා ඉවත් කළ යුතුය. කෘමීන් පාලනය සඳහා Imidacloprid යොදන්න. වහාම පොල් පර්යේෂණ ආයතනයට දැනුම් දෙන්න.'
+    }
+  },
+  {
+    id: 'bud-root-dropping',
+    name: { en: 'Bud Root Dropping', si: 'බද් රූට් ඩ්‍රොපිං' },
+    scientificName: 'Phytophthora spp.',
+    severity: 'High',
+    shortDesc: { 
+      en: 'A condition where the bud roots begin to drop prematurely, affecting the health and stability.', 
+      si: 'ගසේ මුල් පද්ධතියට හානි වීමෙන් ගසේ ස්ථායිතාවයට සහ සෞඛ්‍යයට බලපෑම් ඇති කරන තත්ත්වයකි.' 
+    },
+    fullDesc: {
+      en: 'This disease primarily targets the root system and the lower trunk area, severely impacting the tree\'s ability to absorb water and nutrients, leading to a general decline in palm health.',
+      si: 'මෙම රෝගය ප්‍රධාන වශයෙන් මූල පද්ධතියට බලපාන අතර, ගසට ජලය සහ පෝෂ්‍ය පදාර්ථ උරා ගැනීම වළක්වයි.'
+    },
+    symptoms: {
+      en: ['Premature dropping of roots', 'General wilting', 'Reduced nut size'],
+      si: ['මුල් කඩා වැටීම', 'සාමාන්‍ය මැලවීම', 'ගෙඩි වල ප්‍රමාණය කුඩා වීම']
+    },
+    treatment: {
+      en: 'Improve soil drainage around the tree base. Apply potassium-rich MOP (0-0-60) and specific systemic fungicides.',
+      si: 'ගස වටා ජලාපවාහනය වැඩි දියුණු කරන්න. පොටෑසියම් බහුල MOP පොහොර සහ දිලීර නාශක යොදන්න.'
+    }
+  },
+  {
+    id: 'gray-leaf-spot',
+    name: { en: 'Gray Leaf Spot', si: 'අළු පැහැති පත්‍ර පුල්ලි රෝගය' },
+    scientificName: 'Pestalotiopsis palmarum',
+    severity: 'Medium',
+    shortDesc: { 
+      en: 'A common fungal disease causing grayish-brown spots on leaves, reducing photosynthetic area.', 
+      si: 'පොල් කොළ මත අළු-දුඹුරු පැහැති පුල්ලි ඇති කරමින් ප්‍රභාසංශ්ලේෂණය අඩු කරන දිලීර රෝගයකි.' 
+    },
+    fullDesc: {
+      en: 'Gray Leaf Spot primarily affects older fronds. While rarely fatal to mature palms, severe infections can significantly stunt the growth of seedlings and reduce the overall yield of adult trees.',
+      si: 'බොහෝ විට වයසක කොළ වලට බලපාන අතර, දරුණු ලෙස ආසාදනය වුවහොත් තරුණ පැළ වල වර්ධනය අඩාල කර අස්වැන්න අඩු කරයි.'
+    },
+    symptoms: {
+      en: ['Yellowish spots that turn grayish-brown', 'Spots have a dark brown margin', 'Leaf blighting in severe cases'],
+      si: ['කහ පැහැති පුල්ලි ක්‍රමයෙන් අළු-දුඹුරු පැහැ වීම', 'පුල්ලි වටා තද දුඹුරු පැහැති දාරයක් තිබීම', 'කොළ වේලී යාම']
+    },
+    treatment: {
+      en: 'Cut and burn heavily infected lower fronds. Spray Mancozeb (2g/L of water) every 14 days.',
+      si: 'තදින් ආසාදිත පහළ කොළ කපා පුළුස්සා දමන්න. Mancozeb දිලීර නාශකය (වතුර ලීටරයකට 2g) දින 14 කට වරක් ඉසින්න.'
+    }
+  },
+  {
+    id: 'cci-caterpillars',
+    name: { en: 'CCI Caterpillars', si: 'CCI දළඹු හානිය' },
+    scientificName: 'Opisina arenosella',
+    severity: 'Medium',
+    shortDesc: { 
+      en: 'Caterpillar infestation that causes severe damage to coconut leaves by feeding on leaf tissue.', 
+      si: 'පොල් කොළවල පටක ආහාරයට ගැනීමෙන් ගසට දැඩි හානි සිදු කරන දළඹු විශේෂයකි.' 
+    },
+    fullDesc: {
+      en: 'The Coconut Caterpillar is a major pest. The larvae live in galleries made of silk and frass on the undersurface of leaves, actively feeding on the green tissues, which reduces the photosynthetic efficiency.',
+      si: 'පොල් ගස් සඳහා වන ප්‍රධාන පළිබෝධකයෙකි. මොවුන් කොළ වල යටි පැත්තේ දැල් බැඳගෙන හරිත පටක ආහාරයට ගනී.'
+    },
+    symptoms: {
+      en: ['Drying of leaves appearing as burnt', 'Presence of silken galleries on undersides', 'Accumulation of frass (droppings)'],
+      si: ['කොළ පිළිස්සුණු ස්වභාවයක් ගැනීම', 'කොළ යට සේද වැනි දැල් තිබීම', 'දළඹු මලපහ එකතු වී තිබීම']
+    },
+    treatment: {
+      en: 'Release larval parasitoids (biological control). In severe cases, apply safe bio-insecticides like Bt (Bacillus thuringiensis).',
+      si: 'පරපෝෂිත කෘමීන් මුදා හැරීම (ජෛව පාලනය). හානිය දරුණු නම් Bt වැනි ජෛව කෘමිනාශක යොදන්න.'
+    }
+  },
+  {
+    id: 'healthy',
+    name: { en: 'Healthy Palm', si: 'නිරෝගී පොල් ගස' },
+    scientificName: 'Cocos nucifera',
+    severity: 'None',
+    shortDesc: { 
+      en: 'The coconut palm is in a healthy state with no visible signs of disease or pest infestation.', 
+      si: 'කිසිදු රෝගයක් හෝ පළිබෝධ හානියක් නොමැති නිරෝගී තත්ත්වයකි.' 
+    },
+    fullDesc: {
+      en: 'A perfectly healthy coconut tree showing robust growth, rich green fronds, and strong trunk development. Consistent care prevents future issues.',
+      si: 'හොඳ වර්ධනයක්, තද කොළ පැහැති පත්‍ර සහ ශක්තිමත් කඳක් සහිත නිරෝගී ගසකි. නිසි නඩත්තුව මඟින් අනාගත රෝග වළක්වා ගත හැක.'
+    },
+    symptoms: {
+      en: ['Vibrant green leaves', 'Strong fruit setting', 'Firm and unblemished trunk'],
+      si: ['පැහැපත් තද කොළ පැහැති පත්‍ර', 'හොඳින් ගෙඩි හටගැනීම', 'ශක්තිමත්, නිරෝගී කඳ']
+    },
+    treatment: {
+      en: 'Maintain regular watering. Apply NPK 14-14-14 fertilizer (500g per tree) every 3 months. Keep the base clear of weeds.',
+      si: 'නිතිපතා ජලය යොදන්න. මාස 3කට වරක් NPK 14-14-14 පොහොර (ග්‍රෑම් 500ක්) යොදන්න. ගස වටා වල් පැලෑටි ඉවත් කර තබාගන්න.'
+    }
+  }
+];
 
-  useEffect(() => { fetchDiseases(); }, []);
-  useEffect(() => { filterDiseases(); }, [searchTerm, selectedSeverity, diseases]);
+export default function DiseaseLibraryPage() {
+  const { language } = useTranslation();
+  const isSi = language === 'si';
 
-  const fetchDiseases = async () => {
-    setIsLoading(true);
-    try {
-      const res  = await fetch(`${ML_URL}/diseases`);
-      const data = await res.json();
-      if (data.diseases) { setDiseases(data.diseases); setFiltered(data.diseases); }
-    } catch {
-      const fallback: Disease[] = Object.keys(DISEASE_DETAILS).map((name) => ({
-        name, severity: name === 'Healthy_Leaves' ? 'None' : name === 'Bud Rot' || name === 'Stem Bleeding' || name === 'WCLWD_DryingofLeaflets' ? 'Critical' : name === 'Bud Root Dropping' || name === 'Leaf Rot' ? 'High' : 'Medium',
-        recommendation: 'Consult an agricultural expert.', fertilizer: 'Apply balanced NPK fertilizer.',
-      }));
-      setDiseases(fallback); setFiltered(fallback);
-    } finally { setIsLoading(false); }
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterSeverity, setFilterSeverity] = useState<Severity | 'All'>('All');
+  const [selectedDisease, setSelectedDisease] = useState<DiseaseInfo | null>(null);
+
+  // Translations for the UI elements
+  const t = {
+    title: isSi ? 'පොල් රෝග පුස්තකාලය' : 'Coconut Disease Library',
+    subtitle: isSi ? 'ශ්‍රී ලංකාවේ පොල් වගාවට බලපාන රෝග, රෝග ලක්ෂණ සහ නිවැරදි ප්‍රතිකාර ක්‍රම පිළිබඳව ඉගෙන ගන්න.' : 'Learn about coconut diseases, symptoms, and treatment methods in Sri Lanka.',
+    searchPlaceholder: isSi ? 'රෝගයක් සොයන්න...' : 'Search diseases...',
+    all: isSi ? 'සියලුම' : 'All',
+    critical: isSi ? 'අනතුරුදායක' : 'Critical',
+    high: isSi ? 'ඉහළ' : 'High',
+    medium: isSi ? 'මධ්‍යම' : 'Medium',
+    none: isSi ? 'නිරෝගී' : 'None',
+    learnMore: isSi ? 'වැඩි විස්තර' : 'Learn More',
+    symptoms: isSi ? 'රෝග ලක්ෂණ:' : 'Key Symptoms:',
+    treatment: isSi ? 'නිර්දේශිත ප්‍රතිකාරය:' : 'Recommended Treatment:',
+    noResults: isSi ? 'ගැළපෙන රෝගයක් හමු නොවුණි.' : 'No matching diseases found.'
   };
 
-  const filterDiseases = () => {
-    let result = diseases;
-    if (selectedSeverity !== 'all') result = result.filter((d) => d.severity === selectedSeverity);
-    if (searchTerm) result = result.filter((d) => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    setFiltered(result);
-  };
+  const filteredDiseases = DISEASES.filter(disease => {
+    const matchesSearch = disease.name.en.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          disease.name.si.includes(searchTerm);
+    const matchesSeverity = filterSeverity === 'All' || disease.severity === filterSeverity;
+    return matchesSearch && matchesSeverity;
+  });
 
-  const getSevColor = (s: string) => ({ Critical: 'bg-red-100 text-red-800 border-red-200', High: 'bg-orange-100 text-orange-800 border-orange-200', Medium: 'bg-yellow-100 text-yellow-800 border-yellow-200', None: 'bg-green-100 text-green-800 border-green-200' }[s] || 'bg-gray-100 text-gray-800 border-gray-200');
-  const getSevIcon = (s: string) => (s === 'Critical' || s === 'High') ? <XCircle className="h-4 w-4" /> : s === 'Medium' ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle className="h-4 w-4" />;
-  const getDetails = (name: string) => DISEASE_DETAILS[name] || { scientific_name: 'Unknown', description: { en: 'No description.', si: 'විස්තරයක් නැත.' }, symptoms: { en: [], si: [] }, causes: { en: [], si: [] }, prevention: { en: '', si: '' } };
-  const L = language === 'si' ? 'si' : 'en';
+  const getSeverityStyles = (severity: Severity) => {
+    switch (severity) {
+      case 'Critical': return { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: <AlertTriangle className="w-4 h-4 text-red-600" />, badgeBg: 'bg-red-500' };
+      case 'High':     return { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', icon: <AlertCircle className="w-4 h-4 text-orange-600" />, badgeBg: 'bg-orange-500' };
+      case 'Medium':   return { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', icon: <AlertCircle className="w-4 h-4 text-yellow-600" />, badgeBg: 'bg-yellow-500' };
+      case 'None':     return { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', icon: <ShieldCheck className="w-4 h-4 text-green-600" />, badgeBg: 'bg-green-500' };
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">{t.diseases.title}</h1>
-          <p className="text-lg text-gray-600">{t.diseases.subtitle}</p>
+    <div className="min-h-screen bg-gray-50 pb-12">
+      
+      {/* ── HERO SECTION ── */}
+      <div className="bg-gradient-to-br from-green-800 to-emerald-700 text-white py-16 px-6 shadow-md relative overflow-hidden">
+        {/* Abstract Background Element */}
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 opacity-10">
+          <Leaf className="w-64 h-64" />
         </div>
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <input type="text" placeholder={t.diseases.searchPlaceholder} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" />
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {['all', 'Critical', 'High', 'Medium', 'None'].map((s) => (
-                <button key={s} onClick={() => setSelectedSeverity(s)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedSeverity === s ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-                  {s === 'all' ? t.diseases.allFilter : s}
-                </button>
-              ))}
-            </div>
+        <div className="max-w-6xl mx-auto relative z-10 text-center">
+          <h1 className="text-4xl md:text-5xl font-extrabold mb-4">{t.title}</h1>
+          <p className="text-green-100 text-lg md:text-xl max-w-2xl mx-auto">{t.subtitle}</p>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-6 -mt-8 relative z-20">
+        {/* ── SEARCH & FILTERS ── */}
+        <div className="bg-white rounded-2xl shadow-lg p-4 md:p-6 mb-10 flex flex-col md:flex-row gap-4 items-center justify-between border border-gray-100">
+          
+          <div className="relative w-full md:w-1/2">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input 
+              type="text" 
+              placeholder={t.searchPlaceholder}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all text-sm font-medium text-gray-700"
+            />
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-2 w-full md:w-auto">
+            {(['All', 'Critical', 'High', 'Medium', 'None'] as const).map(sev => (
+              <button
+                key={sev}
+                onClick={() => setFilterSeverity(sev)}
+                className={`px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 shadow-sm border ${
+                  filterSeverity === sev 
+                    ? 'bg-green-600 text-white border-green-600 scale-105' 
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-green-300'
+                }`}
+              >
+                {t[sev.toLowerCase() as keyof typeof t]}
+              </button>
+            ))}
           </div>
         </div>
-        {isLoading ? (
-          <div className="text-center py-12"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div><p className="text-gray-600 mt-4">{t.diseases.loading}</p></div>
+
+        {/* ── DISEASE GRID ── */}
+        {filteredDiseases.length === 0 ? (
+          <div className="bg-white rounded-3xl p-12 text-center shadow-sm border border-gray-100">
+            <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 font-medium text-lg">{t.noResults}</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((disease) => {
-              const details = getDetails(disease.name);
+            {filteredDiseases.map((disease) => {
+              const styles = getSeverityStyles(disease.severity);
               return (
-                <div key={disease.name} onClick={() => setSelectedDisease(disease)}
-                  className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow cursor-pointer">
-                  <div className={`h-2 w-full ${disease.severity === 'Critical' ? 'bg-red-500' : disease.severity === 'High' ? 'bg-orange-500' : disease.severity === 'Medium' ? 'bg-yellow-500' : 'bg-green-500'}`} />
-                  <div className="p-6">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">{disease.name.replace(/_/g, ' ')}</h3>
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getSevColor(disease.severity)}`}>{getSevIcon(disease.severity)}{disease.severity}</span>
+                <div 
+                  key={disease.id} 
+                  className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group flex flex-col h-full"
+                  onClick={() => setSelectedDisease(disease)}
+                >
+                  {/* Card Header Top Border */}
+                  <div className={`h-2 w-full ${styles.badgeBg}`}></div>
+                  
+                  <div className="p-6 flex flex-col flex-grow">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-900 leading-tight mb-1 group-hover:text-green-700 transition-colors">
+                          {isSi ? disease.name.si : disease.name.en}
+                        </h3>
+                        <p className="text-xs text-gray-500 italic font-medium">{disease.scientificName}</p>
+                      </div>
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border ${styles.bg} ${styles.text} ${styles.border}`}>
+                        {styles.icon}
+                        {t[disease.severity.toLowerCase() as keyof typeof t] || disease.severity}
+                      </span>
                     </div>
-                    <p className="text-sm text-gray-500 italic mb-3">{details.scientific_name}</p>
-                    <p className="text-gray-600 text-sm line-clamp-3 mb-4">{details.description[L]}</p>
-                    <button className="text-green-600 text-sm font-medium hover:text-green-700">{t.diseases.learnMore}</button>
+
+                    <p className="text-sm text-gray-600 flex-grow leading-relaxed">
+                      {isSi ? disease.shortDesc.si : disease.shortDesc.en}
+                    </p>
+
+                    <div className="mt-6 flex items-center justify-between border-t border-gray-100 pt-4">
+                      <span className="text-sm font-bold text-green-600 group-hover:text-green-700 flex items-center gap-1">
+                        {t.learnMore} <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
+      </div>
 
-        {/* Modal */}
-        {selectedDisease && (() => {
-          const details = getDetails(selectedDisease.name);
-          return (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-2xl max-w-3xl max-h-[90vh] overflow-y-auto w-full">
-                <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-                  <div><h2 className="text-2xl font-bold text-gray-900">{selectedDisease.name.replace(/_/g, ' ')}</h2><p className="text-gray-500 italic text-sm">{details.scientific_name}</p></div>
-                  <button onClick={() => setSelectedDisease(null)} className="text-gray-400 hover:text-gray-600 bg-gray-100 p-2 rounded-full"><XCircle className="h-6 w-6" /></button>
+      {/* ── MODAL (POPUP) FOR DISEASE DETAILS ── */}
+      {selectedDisease && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 relative">
+            
+            {/* Modal Header */}
+            <div className={`px-6 py-5 border-b border-gray-100 flex items-center justify-between ${getSeverityStyles(selectedDisease.severity).bg}`}>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">{isSi ? selectedDisease.name.si : selectedDisease.name.en}</h2>
+                <p className="text-sm text-gray-600 italic font-medium">{selectedDisease.scientificName}</p>
+              </div>
+              <button 
+                onClick={() => setSelectedDisease(null)}
+                className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-50 transition-colors shadow-sm"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="overflow-y-auto p-6 md:p-8 custom-scrollbar">
+              <p className="text-base text-gray-700 leading-relaxed mb-8">
+                {isSi ? selectedDisease.fullDesc.si : selectedDisease.fullDesc.en}
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Symptoms Box */}
+                <div className="bg-orange-50 border border-orange-100 rounded-2xl p-5 shadow-sm">
+                  <h4 className="text-orange-800 font-bold flex items-center gap-2 mb-3">
+                    <Activity className="w-5 h-5" /> {t.symptoms}
+                  </h4>
+                  <ul className="space-y-2">
+                    {(isSi ? selectedDisease.symptoms.si : selectedDisease.symptoms.en).map((sym, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-orange-900">
+                        <span className="text-orange-400 mt-0.5">•</span> {sym}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <div className="p-6 space-y-6">
-                  <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium border ${getSevColor(selectedDisease.severity)}`}>{getSevIcon(selectedDisease.severity)} {selectedDisease.severity}</span>
-                  <div><h3 className="text-lg font-semibold text-gray-900 mb-2">{t.diseases.modal.description}</h3><p className="text-gray-700 leading-relaxed">{details.description[L]}</p></div>
-                  {details.symptoms[L].length > 0 && (<div><h3 className="text-lg font-semibold text-gray-900 mb-2">{t.diseases.modal.symptoms}</h3><ul className="space-y-1">{details.symptoms[L].map((s: string, i: number) => (<li key={i} className="flex items-start text-gray-700"><span className="text-green-600 mr-2">•</span>{s}</li>))}</ul></div>)}
-                  {details.causes[L].length > 0 && (<div><h3 className="text-lg font-semibold text-gray-900 mb-2">{t.diseases.modal.causes}</h3><ul className="space-y-1">{details.causes[L].map((c: string, i: number) => (<li key={i} className="flex items-start text-gray-700"><span className="text-green-600 mr-2">•</span>{c}</li>))}</ul></div>)}
-                  <div><h3 className="text-lg font-semibold text-gray-900 mb-2">{t.diseases.modal.treatment}</h3><p className="text-gray-700 leading-relaxed">{selectedDisease.recommendation}</p></div>
-                  <div><h3 className="text-lg font-semibold text-gray-900 mb-2">{t.diseases.modal.fertilizer}</h3><p className="text-gray-700 leading-relaxed">{selectedDisease.fertilizer}</p></div>
-                  <div><h3 className="text-lg font-semibold text-gray-900 mb-2">{t.diseases.modal.prevention}</h3><p className="text-gray-700 leading-relaxed">{details.prevention[L]}</p></div>
+
+                {/* Treatment Box */}
+                <div className="bg-green-50 border border-green-100 rounded-2xl p-5 shadow-sm">
+                  <h4 className="text-green-800 font-bold flex items-center gap-2 mb-3">
+                    <Droplets className="w-5 h-5" /> {t.treatment}
+                  </h4>
+                  <p className="text-sm text-green-900 leading-relaxed">
+                    {isSi ? selectedDisease.treatment.si : selectedDisease.treatment.en}
+                  </p>
                 </div>
               </div>
+
+              {/* Informational Note */}
+              <div className="mt-8 bg-blue-50 text-blue-800 text-xs p-4 rounded-xl flex items-start gap-3 border border-blue-100">
+                <ShieldCheck className="w-5 h-5 flex-shrink-0 text-blue-600" />
+                <p>
+                  {isSi 
+                    ? 'මෙම තොරතුරු සැපයෙන්නේ සාමාන්‍ය දැනුවත් කිරීම සඳහා පමණි. අනතුරුදායක රෝග තත්ත්වයකදී කරුණාකර පොල් පර්යේෂණ ආයතනය (CRISL) සම්බන්ධ කරගන්න.' 
+                    : 'This information is provided for educational purposes. For critical outbreaks, please contact the Coconut Research Institute of Sri Lanka (CRISL) for professional agricultural support.'}
+                </p>
+              </div>
             </div>
-          );
-        })()}
-      </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

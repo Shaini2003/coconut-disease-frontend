@@ -1,8 +1,8 @@
 // Frontend/src/pages/ChatbotPage.tsx
-// ✅ FULL CODE: Contains Image Upload capabilities, Memory, and Bilingual support
-// ✅ NO LINES REMOVED: Everything is perfectly indented and complete.
+// ✅ FULL CODE: Contains Voice-to-Voice, Image Upload, Memory, and Bilingual support
+// ✅ NO LINES REMOVED from your original code. Everything is perfectly merged.
 
-import { Bot, ChevronDown, ChevronUp, Loader2, Send, Trash2, User, Paperclip, X } from 'lucide-react';
+import { Bot, ChevronDown, ChevronUp, Loader2, Send, Trash2, User, Paperclip, X, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../i18n';
 
@@ -37,8 +37,8 @@ export default function ChatbotPage() {
   const getWelcome = (): Message => ({
     id: 0, role: 'bot', timestamp: new Date(),
     content: language === 'si'
-      ? `ආයුබෝවන්! 👋 **CocoAI සහායකට** සාදරයෙන් පිළිගනිමු.\n\nමට ඔබේ පොල් ගස්වල ගැටලු හඳුනාගන්න පුළුවන්. **රෝගී ගසක පින්තූරයක් Upload කරන්න**, නැත්නම් ඔබේ ගැටලුව ටයිප් කරන්න!`
-      : `Hello! 👋 Welcome to **CocoAI Assistant**.\n\nI can visually diagnose your coconut trees. **Upload a photo of a diseased leaf/trunk**, or ask me a question!`,
+      ? `ආයුබෝවන්! 👋 **CocoAI සහායකට** සාදරයෙන් පිළිගනිමු.\n\nමට ඔබේ පොල් ගස්වල ගැටලු හඳුනාගන්න පුළුවන්. **රෝගී ගසක පින්තූරයක් Upload කරන්න**, නැත්නම් ඔබේ ගැටලුව කතා කරලා හෝ ටයිප් කරලා අහන්න!`
+      : `Hello! 👋 Welcome to **CocoAI Assistant**.\n\nI can visually diagnose your coconut trees. **Upload a photo of a diseased leaf/trunk**, or ask me a question using your voice or keyboard!`,
   });
 
   const [messages,       setMessages]       = useState<Message[]>([getWelcome()]);
@@ -50,6 +50,10 @@ export default function ChatbotPage() {
   const [hasHistory,     setHasHistory]     = useState(false);
   const [openCategory,   setOpenCategory]   = useState<number | null>(null);
   
+  // 🔥 NEW: Voice feature states
+  const [isListening, setIsListening] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  
   const endRef   = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef  = useRef<HTMLInputElement>(null);
@@ -57,6 +61,57 @@ export default function ChatbotPage() {
   useEffect(() => { setMessages(prev => [getWelcome(), ...prev.slice(1)]); }, [language]);
   useEffect(() => { fetchHistory(); }, []);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, sending]);
+
+  // 🔥 NEW: Speech-to-Text (Listening)
+  const startListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert(language === 'si' ? "ඔබගේ බ්‍රවුසරය හඬ හඳුනාගැනීම සඳහා සහාය නොදක්වයි." : "Speech Recognition is not supported in this browser. Try Chrome.");
+      return;
+    }
+    
+    const recognition = new SpeechRecognition();
+    recognition.lang = language === 'si' ? 'si-LK' : 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend   = () => setIsListening(false);
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+    };
+
+    recognition.start();
+  };
+
+  // 🔥 NEW: Text-to-Speech (Speaking)
+  const speakText = (text: string) => {
+    if (!voiceEnabled || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel(); // Stop any ongoing speech
+
+    // Clean text: remove bold markdown, emojis, hidden tags
+    const cleanText = text
+        .replace(/\[PENDING_DATA:.*?\]/g, '') // Remove hidden state
+        .replace(/\*\*/g, '') // Remove bold marks
+        .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // Basic emojis
+        .replace(/[\u{1F300}-\u{1F5FF}]/gu, '') // Symbols & pics
+        .replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // Transport & map
+        .replace(/[\u{2600}-\u{26FF}]/gu, '') // Misc symbols
+        .replace(/[\u{2700}-\u{27BF}]/gu, ''); // Dingbats
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = language === 'si' ? 'si-LK' : 'en-US';
+    
+    // Optional: Try to find a specific voice matching the language
+    const voices = window.speechSynthesis.getVoices();
+    const specificVoice = voices.find(v => v.lang.includes(language === 'si' ? 'si' : 'en'));
+    if (specificVoice) utterance.voice = specificVoice;
+
+    window.speechSynthesis.speak(utterance);
+  };
 
   const fetchHistory = async () => {
     setHistoryLoading(true);
@@ -147,17 +202,25 @@ export default function ChatbotPage() {
       });
       
       const data = await res.json();
+      const botReply = data.message || (language === 'si' ? 'සමාවෙන්න, දෝෂයක්.' : 'Sorry, an error occurred.');
+      
       setMessages(prev => [...prev, {
         id: Date.now()+1, role:'bot',
-        content: data.message || (language === 'si' ? 'සමාවෙන්න, දෝෂයක්.' : 'Sorry, an error occurred.'),
+        content: botReply,
         timestamp: new Date(),
       }]);
+
+      // 🔥 Speak the response
+      speakText(botReply);
+
     } catch {
+      const errorReply = language === 'si' ? 'සම්බන්ධතා දෝෂය. Backend ක්‍රියාත්මකදැයි බලන්න.' : 'Connection error.';
       setMessages(prev => [...prev, {
         id: Date.now()+1, role:'bot',
-        content: language === 'si' ? 'සම්බන්ධතා දෝෂය. Backend ක්‍රියාත්මකදැයි බලන්න.' : 'Connection error.',
+        content: errorReply,
         timestamp: new Date(),
       }]);
+      speakText(errorReply);
     } finally {
       setSending(false);
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -199,6 +262,17 @@ export default function ChatbotPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* 🔥 NEW: Mute/Unmute Toggle */}
+            <button 
+              onClick={() => {
+                  setVoiceEnabled(!voiceEnabled);
+                  if(voiceEnabled) window.speechSynthesis.cancel();
+              }} 
+              className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition font-medium ${voiceEnabled ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-500'}`}
+              title={voiceEnabled ? "Mute Bot" : "Unmute Bot"}
+            >
+              {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
             <span className={`hidden sm:inline-block text-xs font-bold px-3 py-1.5 rounded-full border ${language === 'si' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
               {language === 'si' ? '🇱🇰 සිංහලෙන් පිළිතුරු' : '🇬🇧 Replying in English'}
             </span>
@@ -331,6 +405,15 @@ export default function ChatbotPage() {
             >
               <Paperclip className="w-5 h-5" />
             </button>
+
+            {/* 🔥 NEW: MIC BUTTON */}
+            <button 
+              onClick={isListening ? () => {} : startListening} 
+              className={`w-10 h-10 flex items-center justify-center rounded-full transition mb-1 ml-1 ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-gray-100 text-gray-500'}`}
+              title="Speak"
+            >
+              {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            </button>
             
             <div className="flex-1 flex items-end py-1">
               <textarea 
@@ -343,7 +426,7 @@ export default function ChatbotPage() {
                     sendMessage(); 
                   }
                 }}
-                placeholder={language === 'si' ? 'ගැටලුව ටයිප් කරන්න හෝ පින්තූරයක් දමන්න...' : 'Type a message or upload an image...'} 
+                placeholder={isListening ? (language === 'si' ? 'අසමින් පවතී...' : 'Listening...') : (language === 'si' ? 'ගැටලුව ටයිප් කරන්න, කතා කරන්න හෝ පින්තූරයක් දමන්න...' : 'Type, speak, or upload an image...')} 
                 className="flex-1 resize-none outline-none text-sm font-medium text-gray-800 bg-transparent max-h-32 py-2" 
                 rows={1} 
               />

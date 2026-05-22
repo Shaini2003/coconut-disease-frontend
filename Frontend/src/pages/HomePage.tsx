@@ -1,6 +1,7 @@
 // Frontend/src/pages/HomePage.tsx
 import { ArrowRight, Brain, Eye, Leaf, Lightbulb, MapPin, Shield, Zap } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import WeatherRiskWidget from '../components/WeatherRiskWidget';
 
 interface HomePageProps { onNavigate: (page: string) => void; }
 
@@ -40,6 +41,13 @@ export default function HomePage({ onNavigate }: HomePageProps) {
               <div className="absolute -top-6 -left-6 w-64 h-64 bg-green-300 rounded-full opacity-20 blur-3xl"></div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* 🔥 NEW: AI Weather Risk Predictor Widget placed here */}
+      <section className="px-4 sm:px-6 lg:px-8 mb-16 relative z-10 -mt-6">
+        <div className="max-w-7xl mx-auto">
+          <WeatherRiskWidget />
         </div>
       </section>
 

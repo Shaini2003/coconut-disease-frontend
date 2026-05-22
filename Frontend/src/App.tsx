@@ -2,6 +2,7 @@
 // ✅ FIXED: After signup → goes to LOGIN page
 // ✅ FIXED: Error boundary prevents blank page on component crash
 // ✅ JWT expiry check on load
+// ✅ ADDED: Progression Tracker Feature
 
 import { useEffect, useState, Component, ReactNode } from 'react';
 import Header from './components/Header';
@@ -15,9 +16,10 @@ import HistoryPage from './pages/HistoryPage';
 import DiseasesPage from './pages/DiseasesPage';
 import ChatbotPage from './pages/ChatbotPage';
 import AboutPage from './pages/AboutPage';
+import ProgressionPage from './pages/ProgressionPage'; // 🔥 ADDED
 import type { AnalysisResult } from './pages/DetectPage';
 
-type Page = 'login' | 'signup' | 'home' | 'detect' | 'results' | 'history' | 'diseases' | 'chatbot' | 'about';
+type Page = 'login' | 'signup' | 'home' | 'detect' | 'results' | 'history' | 'diseases' | 'chatbot' | 'about' | 'progression'; // 🔥 ADDED 'progression'
 
 // ── Error Boundary — prevents blank white screen on any component crash ───────
 class ErrorBoundary extends Component<
@@ -86,7 +88,7 @@ function App() {
   }, []);
 
   const handleNavigate = (page: string) => {
-    const protected_ = ['detect', 'results', 'history', 'chatbot'];
+    const protected_ = ['detect', 'results', 'history', 'chatbot', 'progression']; // 🔥 ADDED 'progression'
     if (protected_.includes(page) && !isLoggedIn) {
       setCurrentPage('login');
       return;
@@ -167,9 +169,11 @@ function App() {
       case 'diseases':
         return <DiseasesPage />;
       case 'chatbot':
-        return <ChatbotPage onNavigate={handleNavigate} />;
+        return <ChatbotPage />;
       case 'about':
         return <AboutPage />;
+      case 'progression': // 🔥 ADDED
+        return <ProgressionPage />;
       default:
         return <HomePage onNavigate={handleNavigate} />;
     }

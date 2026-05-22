@@ -9,6 +9,7 @@ import authRoutes      from './routes/authRoutes';
 import detectionRoutes from './routes/detectionRoutes';
 import chatbotRoutes   from './routes/chatbotRoutes';
 import reportRoutes    from './routes/reportRoutes';
+import progressionRoutes from './routes/progressionRoutes';
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.use('/api/auth',    authRoutes);       // POST /signup  POST /login  GET /pr
 app.use('/api/detect',  detectionRoutes);  // POST /        GET /history  GET /diseases
 app.use('/api/chatbot', chatbotRoutes);    // POST /        GET /history  DELETE /history
 app.use('/api/report',  reportRoutes);     // GET /:detectionId
+app.use('/api/progression', progressionRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {

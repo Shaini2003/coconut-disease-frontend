@@ -15,12 +15,13 @@ export default function Header({ currentPage, onNavigate, onLogout }: HeaderProp
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navItems = [
-    { id: 'home',     label: t.nav.home     },
-    { id: 'detect',   label: t.nav.detect   },
-    { id: 'history',  label: t.nav.history  },
-    { id: 'diseases', label: t.nav.diseases },
-    { id: 'chatbot',  label: t.nav.chatbot  },
-    { id: 'about',    label: t.nav.about    },
+    { id: 'home',        label: t.nav.home },
+    { id: 'detect',      label: t.nav.detect },
+    { id: 'history',     label: t.nav.history },
+    { id: 'diseases',    label: t.nav.diseases },
+    { id: 'chatbot',     label: t.nav.chatbot },
+    { id: 'progression', label: 'Progression' }, // 🔥 ADDED
+    { id: 'about',       label: t.nav.about },
   ];
 
   return (
@@ -40,7 +41,7 @@ export default function Header({ currentPage, onNavigate, onLogout }: HeaderProp
           <nav className="hidden md:flex items-center space-x-1">
             {navItems.map((item) => (
               <button key={item.id} onClick={() => onNavigate(item.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                   currentPage === item.id ? 'bg-green-600 text-white' : 'text-gray-700 hover:bg-gray-100'
                 }`}>
                 {item.label}

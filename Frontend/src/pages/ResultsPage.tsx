@@ -38,7 +38,7 @@ export interface AnalysisResult {
   createdAt?: string; 
   id?: number; 
   all_probabilities?: Record<string, number>;
-  gradcam_url?: string; 
+  gradcam_url?: string | null; 
   lime_url?: string; 
   bbox_url?: string;
   xai_explanation_en?: string; 

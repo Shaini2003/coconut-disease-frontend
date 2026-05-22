@@ -1,6 +1,6 @@
 // Backend/src/controllers/chatbotController.ts
 // ✅ FULL CODE: No lines truncated, All previous detailed descriptions restored!
-// ✅ ULTIMATE A+ FEATURE: Smart Rule-Based State Machine (Zero Cost, No API Key needed)
+// ✅ ULTIMATE A+ FEATURE: Smart Rule-Based State Machine + Google Gemini AI Integration
 
 import { Response } from 'express';
 import axios from 'axios';
@@ -9,6 +9,7 @@ import FormData from 'form-data';
 import pool from '../config/db';
 
 // ── API Keys & URLs ─────────────────────────────────────────────────────────
+const GEMINI_API_KEY    = process.env.GEMINI_API_KEY    || ''; // 🔥 NEW: Gemini API Key
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const OPENAI_API_KEY    = process.env.OPENAI_API_KEY    || '';
 const ML_API_URL        = process.env.ML_API_URL || 'http://localhost:8000';
@@ -141,7 +142,38 @@ export const chat = async (req: any, res: Response) => {
           content: msg.text
         }));
 
-        if (ANTHROPIC_API_KEY) {
+        // 🔥 GEMINI API INTEGRATION (NEW)
+        if (GEMINI_API_KEY) {
+          try {
+            // Format history specifically for Gemini
+            const geminiHistory = parsedHistory.map((msg: any) => ({
+              role: msg.sender === 'user' ? 'user' : 'model',
+              parts: [{ text: msg.text }]
+            }));
+
+            const payload = {
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+              contents: [
+                ...geminiHistory,
+                { role: 'user', parts: [{ text: message }] }
+              ],
+              generationConfig: { temperature: 0.7, maxOutputTokens: 800 }
+            };
+
+            const response = await axios.post(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+              payload,
+              { headers: { 'Content-Type': 'application/json' } }
+            );
+
+            apiResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          } catch (err: any) {
+            console.error('Gemini API Error:', err?.response?.data || err.message);
+          }
+        }
+
+        // Try Anthropic if Gemini failed or is not available
+        if (!apiResponse && ANTHROPIC_API_KEY) {
           try {
             const response = await axios.post('https://api.anthropic.com/v1/messages', {
               model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: systemPrompt,
@@ -151,6 +183,7 @@ export const chat = async (req: any, res: Response) => {
           } catch (err: any) {}
         }
 
+        // Try OpenAI if Anthropic failed or is not available
         if (!apiResponse && OPENAI_API_KEY) {
           try {
             const response = await axios.post('https://api.openai.com/v1/chat/completions', {
@@ -231,7 +264,7 @@ function getRuleBasedResponse(message: string, language: string): string {
   // Stem Bleeding
   if (msg.includes('stem bleed') || msg.includes('ස්ටෙම් ලේ') || msg.includes('bleeding')) {
     return si
-      ? `**ස්ටෙම් ලේ වැගිරීම** 🔴 අනතුරුදායක\n\n**හේතුව:** Thielaviopsis paradoxa දිලීර\n\n**රෝග ලක්ෂණ:**\n• කඳෙන් අඳුරු දියර ගැලීම\n• ගෙඩි නිෂ්පාදනය අඩු වීම\n\n**ප්‍රතිකාරය:**\n• සෞඛ්‍ය සම්පන්න ලී දෙකෙ ෙකොට ආසාදිත ස්ථාන කපා ගන්න\n• Bordeaux paste ගාන්න\n• රෙදි කඩෙකින් ආවරණය කරන්න\n\n**පොහොර:** Boron + Copper micronutrients`
+      ? `**ස්ටෙම් ලේ වැගිරීම** 🔴 අනතුරුදායක\n\n**හේතුව:** Thielaviopsis paradoxa දිලීර\n\n**රෝග ලක්ෂණ:**\n• කඳෙන් අඳුරු දියර ගැලීම\n• ගෙඩි නිෂ්පාදනය අඩු වීම\n\n**ප්‍රතිකාරය:**\n• සෞඛ්‍ය සම්පන්න ලී දෙකෙ ෙකොට ආසාදිත ස්ථාන කපා ගන්න\n• Bordeaux paste ගාන්න\n• රෙදි කඩෙකින් ආවරණය জ্ঞනය කරන්න\n\n**පොහොර:** Boron + Copper micronutrients`
       : `**Stem Bleeding** 🔴 Critical\n\n**Cause:** Thielaviopsis paradoxa fungus\n\n**Symptoms:** Dark brown/black liquid oozing from trunk cracks, internal rot\n\n**Treatment:**\n• Chisel out ALL infected tissue until healthy wood is visible\n• Apply Bordeaux paste (1:1:10) to the wound\n• Wrap with cloth to prevent re-infection\n• Avoid trunk injuries\n\n**Fertilizer:** Balanced fertilizer with boron and copper micronutrients`;
   }
 
