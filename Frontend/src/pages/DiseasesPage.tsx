@@ -1,5 +1,4 @@
 // Frontend/src/pages/DiseasesPage.tsx
-// ✅ UPGRADED PREMIUM UI: Added Modals, Better Cards, Hover Animations, and Bilingual Support
 
 import { useState } from 'react';
 import { Search, AlertCircle, AlertTriangle, ShieldCheck, X, ChevronRight, Activity, Droplets, Leaf } from 'lucide-react';

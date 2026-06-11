@@ -1,5 +1,4 @@
 // Frontend/src/pages/HistoryPage.tsx
-// ✅ UPGRADED PREMIUM UI: Added PDF Download from History, Progress Bars, XAI Badges, and Hover Animations
 
 import { Calendar, Filter, Search, TrendingUp, Download, FileText, Activity, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';

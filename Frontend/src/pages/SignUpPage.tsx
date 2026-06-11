@@ -1,5 +1,4 @@
 // Frontend/src/pages/SignUpPage.tsx
-// ✅ Full i18n (EN + Sinhala)
 import { useState } from 'react';
 import { AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from '../i18n';

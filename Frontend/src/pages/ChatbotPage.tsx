@@ -1,6 +1,5 @@
 // Frontend/src/pages/ChatbotPage.tsx
-// ✅ FULL CODE: Contains Voice-to-Voice, Image Upload, Memory, and Bilingual support
-// ✅ NO LINES REMOVED from your original code. Everything is perfectly merged.
+// Contains Voice-to-Voice, Image Upload, Memory, and Bilingual support
 
 import { Bot, ChevronDown, ChevronUp, Loader2, Send, Trash2, User, Paperclip, X, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';

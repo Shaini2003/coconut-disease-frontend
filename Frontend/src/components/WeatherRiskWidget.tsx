@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { CloudRain, Sun, Droplets, AlertTriangle, MapPin, Loader2, Thermometer, ShieldCheck } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
-// 🔴 මෙතනට ඔබගේ OpenWeather API Key එක දාන්න
 const WEATHER_API_KEY = '9ef6b9855bc89bf5ab855dc9e06783a8'; 
 
 interface WeatherData {

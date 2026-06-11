@@ -1,7 +1,4 @@
 // Frontend/src/pages/ResultsPage.tsx
-// ✅ RESTORED: All Probabilities Section & Bottom Action Buttons
-// ✅ ULTIMATE XAI: GradCAM, LIME, BBox, Feature Importance, Counterfactuals & PDF Download
-// ✅ PROPERLY FORMATTED: Full indentation, no truncated lines
 
 import { useState } from 'react';
 import { 
